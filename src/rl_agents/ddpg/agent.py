@@ -3,11 +3,11 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.compat.v1.keras import backend as K
 import gym
-from ddpg_conv_state.replay_buffer import ReplayBuffer
-from ddpg_conv_state.ouanoise import OUActionNoise
-from ddpg_conv_state.actor import Actor
-from ddpg_conv_state.critic import Critic
-from ddpg_conv_state.utils import plot_learning
+from rl_agents.ddpg.replay_buffer import ReplayBuffer
+from rl_agents.ddpg.ouanoise import OUActionNoise
+from rl_agents.ddpg.actor import Actor
+from rl_agents.ddpg.critic import Critic
+from rl_agents.ddpg.utils import plot_learning
 tf.disable_v2_behavior()
 import rospy
 import time
@@ -21,17 +21,17 @@ class Agent(object):
         n_actions = env.action_space.shape[0]
         input_dims = env.observation_space
         input_dims = [[13],[240,320,4]]
-        alpha = rospy.get_param('ddpg_conv_state/alpha')
-        beta = rospy.get_param('ddpg_conv_state/beta')
-        layer1_size = rospy.get_param('ddpg_conv_state/layer1_size')
-        layer2_size = rospy.get_param('ddpg_conv_state/layer2_size')
-        max_size = rospy.get_param('ddpg_conv_state/max_size')
-        self.n_episodes = rospy.get_param('ddpg_conv_state/n_episodes')
-        self.n_steps = rospy.get_param('ddpg_conv_state/n_steps')
-        self.gamma = rospy.get_param('ddpg_conv_state/gamma')
-        self.tau = rospy.get_param('ddpg_conv_state/tau')
+        alpha = rospy.get_param('ddpg/alpha')
+        beta = rospy.get_param('ddpg/beta')
+        layer1_size = rospy.get_param('ddpg/layer1_size')
+        layer2_size = rospy.get_param('ddpg/layer2_size')
+        max_size = rospy.get_param('ddpg/max_size')
+        self.n_episodes = rospy.get_param('ddpg/n_episodes')
+        self.n_steps = rospy.get_param('ddpg/n_steps')
+        self.gamma = rospy.get_param('ddpg/gamma')
+        self.tau = rospy.get_param('ddpg/tau')
         self.memory = ReplayBuffer(max_size, input_dims, n_actions)
-        self.batch_size = rospy.get_param('ddpg_conv_state/batch_size')
+        self.batch_size = rospy.get_param('ddpg/batch_size')
         self.sess = tf.Session()
 
 
@@ -170,6 +170,6 @@ class Agent(object):
             if ep+1 % 200 == 0:
                 self.save_models()
         self.env.close()
-        filename = rospy.get_param('ddpg_conv_state/plot_file_name')
+        filename = rospy.get_param('ddpg/plot_file_name')
         plot_learning(score_history, filename, window=100)
         self.save_models()
