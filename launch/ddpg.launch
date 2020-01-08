@@ -1,0 +1,4 @@
+<launch>
+    <!-- load configuration -->
+    <rosparam command="load" file="$(find rl_agents)/src/rl_agents/ddpg/cfg/conv_state.yaml" />
+</launch>
