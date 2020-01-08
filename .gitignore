@@ -1,2 +1,4 @@
-.vscode/
-.env/
+*.pyc
+rl_agents.code-workspace
+.vscode/c_cpp_properties.json
+.vscode/settings.json
