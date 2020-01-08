@@ -1,9 +1,9 @@
 from distutils.core import setup
 from catkin_pkg.python_setup import generate_distutils_setup
 
-d = generate_distutils_setup(
-    packages=['ddpg_conv_state'],
+setup_args = generate_distutils_setup(
+    packages=['rl_agents', 'rl_agents.ddpg', 'rl_agents.common'],
     package_dir={'': 'src'}
 )
 
-setup(**d)
+setup(**setup_args)
