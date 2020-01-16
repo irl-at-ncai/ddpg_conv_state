@@ -66,9 +66,9 @@ class Agent(AgentBase):
         # input to critic and output from actor. Shape is the same for both
         self.actions_input_shape = (self.env.action_space.shape[0],)
         self.actions_output_shape = self.actions_input_shape
-        self.robot_state_input_shape = \
-            (self.env.observation_space['position'].shape[0] +
-                self.env.observation_space['velocity'].shape[0],)
+        self.robot_state_input_shape = (
+            self.env.observation_space['position'].shape[0] +
+            self.env.observation_space['velocity'].shape[0],)
         self.image_input_shape = env.observation_space['front_cam'].shape
 
         # state input info
@@ -211,8 +211,10 @@ class Agent(AgentBase):
                 state = new_state
                 # env.render() To be linked with ROS
             score_history.append(score)
-            print('episode', eps, 'score %.2f' % score,'100 game average %.2f' % np.mean(score_history[-100:]))
-            if eps+1 % 200 == 0:
+            print('''Episode {} - Score {} - 100 game average {}'''.format(
+                eps, score, np.mean(score_history[-100:])
+            ))
+            if eps + 1 % 200 == 0:
                 self.save_models()
         self.env.close()
         filename = rospy.get_param('ddpg/plot_file_name')
@@ -350,12 +352,14 @@ class Agent(AgentBase):
                 self.update_target_network_parameters(first_update=False)
 
     def save_models(self):
+        """ Saves a model from a checkpoint file. """
         self.actor.save_checkpoint()
         self.target_actor.save_checkpoint()
         self.critic.save_checkpoint()
         self.target_critic.save_checkpoint()
 
     def load_models(self):
+        """ Loads a model from a checkpoint file. """
         self.actor.load_checkpoint()
         self.target_actor.load_checkpoint()
         self.critic.load_checkpoint()
