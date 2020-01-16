@@ -23,6 +23,7 @@ import rospy
 AgentState = \
     namedtuple("AgentState", ['image', 'robot_state'])
 
+
 class Agent(AgentBase):
     """
     A reinforcement learning agent that uses deep deterministic
