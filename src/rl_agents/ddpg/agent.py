@@ -17,7 +17,7 @@ from rl_agents.common.experience_memory import Transition
 from rl_agents.ddpg.ouanoise import OUActionNoise
 from rl_agents.ddpg.actor import Actor, ActorInputs
 from rl_agents.ddpg.critic import Critic, CriticInputs
-from rl_agents.ddpg.utils import Utilities
+from rl_agents.common.utils import plot_learning
 import rospy
 
 AgentState = \
@@ -215,7 +215,7 @@ class Agent(AgentBase):
                 self.save_models()
         self.env.close()
         filename = rospy.get_param('ddpg/plot_file_name')
-        Utilities.plot_learning(score_history, filename, window=100)
+        plot_learning(score_history, filename, window=100)
         self.save_models()
 
     def make_critic(
