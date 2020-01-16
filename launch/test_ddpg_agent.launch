@@ -2,4 +2,9 @@
     <!-- load configuration -->
     <rosparam command="load"
         file="$(find rl_agents)/src/rl_agents/ddpg/cfg/ddpg_1.yaml" />
+    <node
+        name="test_ddpg_agent"
+        type="test_ddpg_agent.py"
+        pkg="rl_agents"
+        output="screen"/>
 </launch>
