@@ -1,0 +1,5 @@
+<launch>
+    <!-- load configuration -->
+    <rosparam command="load"
+        file="$(find rl_agents)/src/rl_agents/agent_base/cfg/agent_base_1.yaml" />
+</launch>
