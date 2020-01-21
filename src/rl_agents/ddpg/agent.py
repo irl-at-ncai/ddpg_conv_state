@@ -195,7 +195,7 @@ class Agent(AgentBase):
             state = self.preprocess_state(self.env.reset())
             done = False
             score = 0
-            for _ in range(self.max_episode_steps):
+            for step in range(self.max_episode_steps):
                 actor_inputs = self.get_actor_inputs(state)
                 action = self.choose_action(actor_inputs)
                 new_state, reward, done, _ = self.env.step(action)
@@ -205,15 +205,16 @@ class Agent(AgentBase):
                 if self.exp_memory.size >= self.batch_size:
                     self.learn()
                 score += reward
-                print('score', score)
+                rospy.loginfo(
+                    '''Epsiode step#{}: Score = {}'''.format(step, score))
                 if done:
                     break
                 state = new_state
                 # env.render() To be linked with ROS
             score_history.append(score)
-            print('''Episode {} - Score {} - 100 game average {}'''.format(
-                eps, score, np.mean(score_history[-100:])
-            ))
+            rospy.loginfo(
+                '''Episode {} - Score {} - 100 game average {}'''.format(
+                    eps, score, np.mean(score_history[-100:])))
             if eps + 1 % 200 == 0:
                 self.save_models()
         self.env.close()
