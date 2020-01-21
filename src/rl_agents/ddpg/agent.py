@@ -14,7 +14,7 @@ from rl_agents.common.agent_base import AgentBase
 from rl_agents.common.state_preprocessors import ImagePreprocessor
 from rl_agents.common.experience_memory import ExperienceMemory
 from rl_agents.common.experience_memory import Transition
-from rl_agents.ddpg.ouanoise import OUActionNoise
+from rl_agents.common.ouanoise import OUActionNoise
 from rl_agents.ddpg.actor import Actor, ActorInputs
 from rl_agents.ddpg.critic import Critic, CriticInputs
 from rl_agents.common.utils import plot_learning
@@ -116,7 +116,7 @@ class Agent(AgentBase):
                 'ActorModel')
 
         # define experience memory
-        self.noise = OUActionNoise(mu=np.zeros(self.actions_input_shape))
+        self.noise = OUActionNoise(mean=np.zeros(self.actions_input_shape))
         self.exp_memory = \
             ExperienceMemory(
                 init_size=replay_memory_initial_size,
