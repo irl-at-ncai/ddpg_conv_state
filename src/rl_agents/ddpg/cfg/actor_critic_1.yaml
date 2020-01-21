@@ -1,0 +1,18 @@
+conv_layers:
+  sizes:
+    c1: 32
+    c2: 32
+    c3: 32
+  kernels:
+    c1: 3
+    c2: 3
+    c3: 3
+
+dense_layers:
+  sizes:
+    d4: 400
+    d5: 300
+
+output_params:
+  noise: 0.0003
+  l2: 0.01

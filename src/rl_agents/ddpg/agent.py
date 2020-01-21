@@ -1,175 +1,367 @@
-import os
+#!/usr/bin/env python3
+"""
+Defines a reinforcement learning agent based on deep deterministic
+policy gradients.
+"""
+
+import importlib
+from collections import namedtuple
 import numpy as np
-import tensorflow.compat.v1 as tf
-from tensorflow.compat.v1.keras import backend as K
-import gym
-from rl_agents.ddpg.replay_buffer import ReplayBuffer
-from rl_agents.ddpg.ouanoise import OUActionNoise
-from rl_agents.ddpg.actor import Actor
-from rl_agents.ddpg.critic import Critic
-from rl_agents.ddpg.utils import plot_learning
-tf.disable_v2_behavior()
+import tensorflow as tf
+from tensorflow.train import AdamOptimizer
+from tensorflow.losses import mean_squared_error
+from rl_agents.common.agent_base import AgentBase
+from rl_agents.common.state_preprocessors import ImagePreprocessor
+from rl_agents.common.experience_memory import ExperienceMemory
+from rl_agents.common.experience_memory import Transition
+from rl_agents.common.ouanoise import OUActionNoise
+from rl_agents.ddpg.actor import Actor, ActorInputs
+from rl_agents.ddpg.critic import Critic, CriticInputs
+from rl_agents.common.utils import plot_learning
 import rospy
-import time
+
+AgentState = \
+    namedtuple("AgentState", ['image', 'robot_state'])
 
 
-class Agent(object):
-    def __init__(self, env, alpha=0.0005, beta=0.005, tau=0.001, gamma=0.99,
-                max_size=10000, layer1_size=400,
-                layer2_size=300, batch_size=64):
-        self.env = env
-        n_actions = env.action_space.shape[0]
-        input_dims = env.observation_space
-        input_dims = [[13],[240,320,4]]
-        alpha = rospy.get_param('ddpg/alpha')
-        beta = rospy.get_param('ddpg/beta')
-        layer1_size = rospy.get_param('ddpg/layer1_size')
-        layer2_size = rospy.get_param('ddpg/layer2_size')
-        max_size = rospy.get_param('ddpg/max_size')
-        self.n_episodes = rospy.get_param('ddpg/n_episodes')
-        self.n_steps = rospy.get_param('ddpg/n_steps')
-        self.gamma = rospy.get_param('ddpg/gamma')
-        self.tau = rospy.get_param('ddpg/tau')
-        self.memory = ReplayBuffer(max_size, input_dims, n_actions)
+class Agent(AgentBase):
+    """
+    A reinforcement learning agent that uses deep deterministic
+    policy gradients (DDPG).
+
+    Parameters
+    ----------
+    agent_name: str
+        Name of the agent that also corresponds to its folder directory
+    env: gym.Env
+        The underlying gym environment the agent acts on
+    """
+    # pylint: disable=too-many-instance-attributes
+    def __init__(self, agent_name, env):
+        super(Agent, self).__init__(agent_name=agent_name, env=env)
+
+        # get all configuration parameters
+        self.discount_factor = rospy.get_param('ddpg/discount_factor')
+        # The tau parameter for weighted target network update
+        self.target_soft_update_weight = \
+            rospy.get_param('ddpg/target_soft_update_weight')
         self.batch_size = rospy.get_param('ddpg/batch_size')
-        self.sess = tf.Session()
+        self.n_episodes = rospy.get_param('ddpg/n_episodes')
+        self.max_episode_steps = rospy.get_param('ddpg/max_episode_steps')
+        self.lr_critic = rospy.get_param('ddpg/lr_critic')
+        self.lr_actor = rospy.get_param('ddpg/lr_actor')
+        replay_memory_initial_size = \
+            rospy.get_param('ddpg/replay_memory_initial_size')
+        replay_memory_max_size = \
+            rospy.get_param('ddpg/replay_memory_max_size')
+        network_input_image_shape = \
+            rospy.get_param('ddpg/network_input_image_shape')
+        actor_critic_model_version = \
+            rospy.get_param('ddpg/actor_critic_model_version')
 
+        if replay_memory_initial_size == -1:
+            replay_memory_initial_size = self.batch_size
 
-        self.actor  = Actor(alpha, n_actions, 'Actor', input_dims, self.sess,
-                            layer1_size, layer2_size, env.action_space.high, 
-                            self.batch_size, ckpt_dir='tmp/ddpg/actor')
+        # get environment space info
+        # input to critic and output from actor. Shape is the same for both
+        self.actions_input_shape = (self.env.action_space.shape[0],)
+        self.actions_output_shape = self.actions_input_shape
+        self.robot_state_input_shape = (
+            self.env.observation_space['position'].shape[0] +
+            self.env.observation_space['velocity'].shape[0],)
+        self.image_input_shape = env.observation_space['front_cam'].shape
 
-        self.critic = Critic(beta, n_actions, 'Critic', input_dims, self.sess,
-                            layer1_size, layer2_size, self.batch_size,
-                            ckpt_dir='tmp/ddpg/critic')
+        # state input info
+        rospy.loginfo(
+            """Initializing the network with following inputs:
+            1) robot_state_input_shape (shape = {})
+            2) image_input_shape (shape = {})
+            3) actions_input_shape (shape = {})
+            """.format(
+                self.robot_state_input_shape,
+                self.image_input_shape,
+                self.actions_input_shape))
 
-        self.target_actor  = Actor(alpha, n_actions, 'TargetActor', input_dims,
-                                self.sess,layer1_size, layer2_size, 
-                                env.action_space.high, self.batch_size,
-                                ckpt_dir='tmp/ddpg/target_actor')
+        # define a preprocessor for image input
+        self.image_preprocessor = \
+            ImagePreprocessor(
+                input_shape=self.image_input_shape,
+                output_shape=tuple(network_input_image_shape))
 
-        self.target_critic = Critic(beta, n_actions, 'TargetCritic', input_dims,
-                                    self.sess, layer1_size, layer2_size, 
-                                    self.batch_size, ckpt_dir='tmp/ddpg/target_critic')
+        rospy.loginfo(
+            """Initialized the image preprocessor with the following
+                parameters:
+            1) input_shape (shape = {})
+            2) output_shape (shape = {})
+            """.format(
+                self.image_preprocessor.input_shape,
+                self.image_preprocessor.output_shape))
 
-        self.noise = OUActionNoise(mu=np.zeros(n_actions))
+        # get the learning model used for critic
+        self.critic_model = \
+            getattr(
+                importlib.import_module(
+                    'rl_agents.{}.actor_critic_{}'.format(
+                        self.name,
+                        actor_critic_model_version.replace('v', ''))),
+                'CriticModel')
 
+        # get the learning model used for actor
+        self.actor_model = \
+            getattr(
+                importlib.import_module(
+                    'rl_agents.{}.actor_critic_{}'.format(
+                        self.name,
+                        actor_critic_model_version.replace('v', ''))),
+                'ActorModel')
 
-        self.update_actor = [self.target_actor.params[i].assign(
-                            tf.multiply(self.actor.params[i], self.tau) +
-                            tf.multiply(self.target_actor.params[i], 1. -self.tau))
-                            for i in range(len(self.target_actor.params))]
-        
-        
-        self.update_critic = [self.target_critic.params[i].assign(
-                            tf.multiply(self.critic.params[i], self.tau) +
-                            tf.multiply(self.target_critic.params[i], 1. -self.tau))
-                                                for i in range(len(self.target_critic.params))]
-        
+        # define experience memory
+        self.noise = OUActionNoise(mean=np.zeros(self.actions_input_shape))
+        self.exp_memory = \
+            ExperienceMemory(
+                init_size=replay_memory_initial_size,
+                max_size=replay_memory_max_size)
+
+        # define critics
+        self.critic = \
+            self.make_critic(
+                scope='critic', summaries_dir='tmp/ddpg/critic')
+        self.target_critic = \
+            self.make_critic(
+                scope='target_critic', summaries_dir='tmp/ddpg/target_critic')
+
+        # define actors
+        self.actor = \
+            self.make_actor(
+                scope='actor', summaries_dir='tmp/ddpg/actor')
+        self.target_actor = \
+            self.make_actor(
+                scope='target_actor', summaries_dir='tmp/ddpg/target_actor')
+
+        self.update_actor = [
+            self.target_actor.params[i].assign(
+                tf.multiply(
+                    self.actor.params[i],
+                    self.target_soft_update_weight) +
+                tf.multiply(
+                    self.target_actor.params[i],
+                    1. - self.target_soft_update_weight))
+            for i in range(len(self.target_actor.params))
+        ]
+
+        self.update_critic = [
+            self.target_critic.params[i].assign(
+                tf.multiply(
+                    self.critic.params[i],
+                    self.target_soft_update_weight) +
+                tf.multiply(
+                    self.target_critic.params[i],
+                    1. - self.target_soft_update_weight))
+            for i in range(len(self.target_critic.params))
+        ]
+
         self.sess.run(tf.global_variables_initializer())
+        self.update_target_network_parameters(first_update=True)
+        rospy.loginfo('Done creating agent!')
 
-        self.update_target_network_parameters(first=True)
+    def preprocess_state(self, state):
+        """
+        Performs pre-processing operations on the state
+        """
+        # resize images
+        agent_state = []
+        image = \
+            self.image_preprocessor.process(self.sess, state['front_cam'])
+        robot_state = \
+            np.concatenate((state['position'], state['velocity']))
+        agent_state = AgentState(image=image, robot_state=robot_state)
 
-    def update_target_network_parameters(self, first=False):
-        for _, d in enumerate(["/device:GPU:0", "/device:GPU:1"]):
-            with tf.device(d):
-                if first:
-                    old_tau = self.tau
-                    self.tau = 1.0
-                    self.target_actor.sess.run(self.update_actor)
-                    self.target_critic.sess.run(self.update_critic)
-                    self.tau = old_tau
-                else:
-                    self.target_critic.sess.run(self.update_critic)
-                    self.target_actor.sess.run(self.update_actor)
+        return agent_state
 
-    def remember(self, state, action, reward, new_state, done):
-        self.memory.store_transition(state, action, reward, new_state, done)
-    
-    def choose_action(self, state):
-        state1 = state[0][np.newaxis, :]
-        state2 = state[1][np.newaxis, :]
-        state = [state1, state2]
-        for _, d in enumerate(["/device:GPU:0", "/device:GPU:1"]):
-            with tf.device(d):
-                mu = self.actor.predict(state)
-        noise = self.noise()
-        mu_prime = mu + noise
-
-        return mu_prime[0]
-
-    def learn(self):
-        if self.memory.mem_cntr < self.batch_size:
-            return
-        for _, d in enumerate(["/device:GPU:0", "/device:GPU:1"]):
-            with tf.device(d):
-                state, action, reward, new_state, done = \
-                                            self.memory.sample_buffer(self.batch_size)
-                #target q-value(new_state) with actor's bounded action forward pass
-                critic_value_ = self.target_critic.predict(new_state,
-                                                self.target_actor.predict(new_state))
-
-                target = []
-                for j in range(self.batch_size):
-                    target.append(reward[j] + self.gamma*critic_value_[j]*done[j])
-
-                target = np.reshape(target, (self.batch_size, 1))
-
-                _ = self.critic.train(state, action, target) #s_i, a_i and y_i
-
-                # a = mu(s_i)
-                a_outs = self.actor.predict(state)
-                # gradients of Q w.r.t actions
-                grads = self.critic.get_action_gradients(state, a_outs)
-
-                self.actor.train(state, grads[0])
-
-                self.update_target_network_parameters(first=True)
-
-    def save_models(self):
-        self.actor.save_checkpoint()
-        self.target_actor.save_checkpoint()
-        self.critic.save_checkpoint()
-        self.target_critic.save_checkpoint()
-    
-    def load_models(self):
-        self.actor.load_checkpoint()
-        self.target_actor.load_checkpoint()
-        self.critic.load_checkpoint()
-        self.target_critic.load_checkpoint()
+    def get_actor_inputs(self, agent_state):
+        """
+        Generates actor inputs based on single input state
+        """
+        # add new axes for single input
+        return ActorInputs(
+            robot_state=agent_state.robot_state[np.newaxis, ...],
+            image=agent_state.image[np.newaxis, ...])
 
     def start_training(self):
+        """ Trains the network """
         score_history = []
         np.random.seed(0)
-        nepisodes = 1000
-        for ep in range(self.n_episodes):
-            obs = self.env.reset()
+        for eps in range(self.n_episodes):
+            state = self.preprocess_state(self.env.reset())
             done = False
             score = 0
-            for i in range(self.n_steps):
-                print("Step number: ", i+1)
-                #start_time = time.process_time()
-                act = self.choose_action(obs)
-                #print("\n Actions: ",act,"\n")
-                #act_time = time.process_time()
-                #print("Time to take action: ",act_time - start_time)
-                new_state, reward, done, info = self.env.step(act)
-                self.remember(obs, act, reward, new_state, int(done))
-                #mem_time = time.process_time()
-                #print("Time to remember: ", mem_time - act_time)
-                #self.learn()
-                #learn_time = time.process_time()
-                #print("Time to learn: ", learn_time - mem_time)
-                score +=reward
-                # if done:
-                #     break
-                obs = new_state
-                #env.render() To be linked with ROS
+            for step in range(self.max_episode_steps):
+                actor_inputs = self.get_actor_inputs(state)
+                action = self.choose_action(actor_inputs)
+                new_state, reward, done, _ = self.env.step(action)
+                new_state = self.preprocess_state(new_state)
+                self.exp_memory.add(
+                    Transition(state, action, reward, new_state, done, eps))
+                if self.exp_memory.size >= self.batch_size:
+                    self.learn()
+                score += reward
+                rospy.loginfo(
+                    '''Epsiode step#{}: Score = {}'''.format(step, score))
+                if done:
+                    break
+                state = new_state
+                # env.render() To be linked with ROS
             score_history.append(score)
-            print('episode', ep, 'score %.2f' % score,'100 game average %.2f' % np.mean(score_history[-100:]))
-            if ep+1 % 200 == 0:
+            rospy.loginfo(
+                '''Episode {} - Score {} - 100 game average {}'''.format(
+                    eps, score, np.mean(score_history[-100:])))
+            if eps + 1 % 200 == 0:
                 self.save_models()
         self.env.close()
         filename = rospy.get_param('ddpg/plot_file_name')
         plot_learning(score_history, filename, window=100)
         self.save_models()
+
+    def make_critic(
+            self,
+            scope,
+            summaries_dir):
+        """
+        Initializes and returns a critic
+        """
+        return Critic(
+            sess=self.sess,
+            image_preprocessor=self.image_preprocessor,
+            robot_state_input_shape=self.robot_state_input_shape,
+            actions_input_shape=self.actions_input_shape,
+            learning_rate=self.lr_critic,
+            model=self.critic_model,
+            loss_fn=mean_squared_error,
+            optimizer=AdamOptimizer,
+            scope=scope,
+            summaries_dir=summaries_dir,
+            gpu="/gpu:0")
+
+    def make_actor(
+            self,
+            scope,
+            summaries_dir):
+        """
+        Initializes and returns an actor
+        """
+        return Actor(
+            sess=self.sess,
+            image_preprocessor=self.image_preprocessor,
+            robot_state_input_shape=self.robot_state_input_shape,
+            # output actions from actor are input to critic
+            actions_output_shape=self.actions_output_shape,
+            action_bound=self.env.action_space.high,
+            learning_rate=self.lr_critic,
+            batch_size=self.batch_size,
+            model=self.actor_model,
+            optimizer=AdamOptimizer,
+            scope=scope,
+            summaries_dir=summaries_dir,
+            gpu="/gpu:0")
+
+    def update_target_network_parameters(self, first_update=False):
+        """
+        Updates the target networks from main networks with a soft-update
+        """
+        for _, gpu in enumerate(["/gpu:0"]):
+            with tf.device(gpu):
+                if first_update:
+                    old_target_soft_update_weight = \
+                        self.target_soft_update_weight
+                    self.target_soft_update_weight = 1.0
+                    self.target_actor.sess.run(self.update_actor)
+                    self.target_critic.sess.run(self.update_critic)
+                    self.target_soft_update_weight = \
+                        old_target_soft_update_weight
+                else:
+                    self.target_critic.sess.run(self.update_critic)
+                    self.target_actor.sess.run(self.update_actor)
+
+    def choose_action(self, inputs):
+        """ Returns an action based on the current inputs. """
+        action = self.actor.predict(inputs) + self.noise()
+        return action[0]
+
+    def learn(self):
+        """
+        Performs the DDPG update to train the actor and critic networks
+        """
+        for _, gpu in enumerate(["/gpu:0"]):
+            with tf.device(gpu):
+                samples = \
+                    self.exp_memory.sample(self.batch_size)
+                states_batch, actions_batch, rewards_batch, \
+                    next_states_batch, done_batch, _ = \
+                    map(np.array, zip(*samples))
+
+                next_images, next_robot_states = \
+                    map(np.array, zip(*next_states_batch))
+
+                # target q-value(new_state) with actor's bounded action forward
+                # pass
+                target_actions = \
+                    self.target_actor.predict(
+                        ActorInputs(
+                            image=next_images, robot_state=next_robot_states)
+                    )
+
+                q_values = \
+                    self.target_critic.predict(
+                        CriticInputs(
+                            image=next_images,
+                            robot_state=next_robot_states,
+                            actions=target_actions))
+
+                target = \
+                    np.array([
+                        rewards_batch[j] + self.discount_factor * q_values[j] *
+                        done_batch[j]
+                        for j in range(self.batch_size)
+                    ])
+
+                images, robot_states = \
+                    map(np.array, zip(*states_batch))
+                self.critic.train(
+                    CriticInputs(
+                        image=images,
+                        robot_state=robot_states,
+                        actions=actions_batch),
+                    target)
+
+                # a = mu(s_i)
+                actor_inputs = \
+                    ActorInputs(
+                        image=images,
+                        robot_state=robot_states
+                    )
+                next_actions = self.actor.predict(actor_inputs)
+
+                # gradients of Q w.r.t actions
+                grads = \
+                    self.critic.get_action_gradients(
+                        CriticInputs(
+                            image=images,
+                            robot_state=robot_states,
+                            actions=next_actions))
+
+                self.actor.train(actor_inputs, grads[0])
+                self.update_target_network_parameters(first_update=False)
+
+    def save_models(self):
+        """ Saves a model from a checkpoint file. """
+        self.actor.save_checkpoint()
+        self.target_actor.save_checkpoint()
+        self.critic.save_checkpoint()
+        self.target_critic.save_checkpoint()
+
+    def load_models(self):
+        """ Loads a model from a checkpoint file. """
+        self.actor.load_checkpoint()
+        self.target_actor.load_checkpoint()
+        self.critic.load_checkpoint()
+        self.target_critic.load_checkpoint()

@@ -2,7 +2,7 @@ from distutils.core import setup
 from catkin_pkg.python_setup import generate_distutils_setup
 
 setup_args = generate_distutils_setup(
-    packages=['rl_agents', 'rl_agents.ddpg', 'rl_agents.common'],
+    packages=['rl_agents', 'rl_agents.ddpg', 'rl_agents.common', 'rl_agents.tests'],
     package_dir={'': 'src'}
 )
 

@@ -1,14 +1,41 @@
 #!/usr/bin/env python3
+"""Defines the base class with common functionality across agents"""
 
-class AgentBase(object):
+import importlib
+import tensorflow as tf
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
+
+
+class AgentBase():
+    """
+    The base class for agents
+    """
     def __init__(self, agent_name, env):
-    	self.name = agent_name
-    	self.env = env
+        self.name = agent_name
+        self.env = env
+        gpu_options = tf.GPUOptions(visible_device_list="0")
+        self.sess = tf.Session(
+            config=tf.ConfigProto(
+                gpu_options=gpu_options,
+            log_device_placement=True))
 
     @staticmethod
     def get_agent(agent_name, env):
-    	module = 'rl_agents.{}.agent'.format(agent_name)
-    	exec('import {}'.format(module))
-    	return exec('{}.Agent(env)'.format(module))
+        """Returns an agent of given name
 
+        Parameters
+        ----------
+        agent_name : str
+            Name of the agent
+        env: gym.Env
+            The underlying gym environment the agent acts on
 
+        Returns
+        ------
+        AgentBase
+            An reinforcement learning agent of base type AgentBase()
+        """
+        module = \
+            importlib.import_module('rl_agents.{}.agent'.format(agent_name))
+        return module.Agent(agent_name, env)
