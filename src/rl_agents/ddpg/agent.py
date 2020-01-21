@@ -70,17 +70,13 @@ class Agent(AgentBase):
             self.env.observation_space['position'].shape[0] +
             self.env.observation_space['velocity'].shape[0],)
         self.image_input_shape = env.observation_space['front_cam'].shape
+        self.image_depth_input_shape = env.observation_space['front_cam_depth'].shape
 
         # state input info
         rospy.loginfo(
-            """Initializing the network with following inputs:
-            1) robot_state_input_shape (shape = {})
-            2) image_input_shape (shape = {})
-            3) actions_input_shape (shape = {})
-            """.format(
-                self.robot_state_input_shape,
-                self.image_input_shape,
-                self.actions_input_shape))
+            "Initializing the network with following observations:")
+        for idx, (key, value) in enumerate(env.observation_space.spaces.items()):
+            rospy.loginfo("{}) {} (shape = {})".format(idx, key, value.shape))
 
         # define a preprocessor for image input
         self.image_preprocessor = \
@@ -89,8 +85,8 @@ class Agent(AgentBase):
                 output_shape=tuple(network_input_image_shape))
 
         rospy.loginfo(
-            """Initialized the image preprocessor with the following
-                parameters:
+            "Initialized the image preprocessor with the following "
+            """parameters:
             1) input_shape (shape = {})
             2) output_shape (shape = {})
             """.format(
