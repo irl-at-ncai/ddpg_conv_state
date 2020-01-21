@@ -86,8 +86,7 @@ class Critic(object):
                 if not os.path.exists(summary_dir):
                     os.makedirs(summary_dir)
                 self.summary_writer = \
-                    self.summary_writer = \
-                        tf.summary.FileWriter(summary_dir)
+                    tf.summary.FileWriter(summary_dir)
 
             self.saver = tf.train.Saver()
 
