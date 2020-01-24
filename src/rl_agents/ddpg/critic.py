@@ -3,8 +3,8 @@
 
 import os
 import tensorflow as tf
-from tensorflow.train import AdamOptimizer
-from tensorflow.losses import mean_squared_error
+from tensorflow.compat.v1.train import AdamOptimizer
+from tensorflow.compat.v1.losses import mean_squared_error
 from rl_agents.ddpg.actor_critic_1 import CriticModel
 
 

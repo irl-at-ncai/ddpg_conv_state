@@ -3,7 +3,7 @@
 
 import os
 import tensorflow as tf
-from tensorflow.train import AdamOptimizer
+from tensorflow.compat.v1.train import AdamOptimizer
 from rl_agents.ddpg.actor_critic_1 import ActorModel
 
 

@@ -8,8 +8,9 @@ import importlib
 import copy
 import numpy as np
 import tensorflow as tf
-from tensorflow.train import AdamOptimizer
-from tensorflow.losses import mean_squared_error
+import gym
+from tensorflow.compat.v1.train import AdamOptimizer
+from tensorflow.compat.v1.losses import mean_squared_error
 from rl_agents.common.agent_base import AgentBase
 from rl_agents.common.experience_memory import ExperienceMemory
 from rl_agents.common.experience_memory import Transition
@@ -58,7 +59,10 @@ class Agent(AgentBase):
 
         # get environment space info
         # input to critic and output from actor. Shape is the same for both
-        actions_input_shape = (self.env.action_space.shape[0],)
+        if isinstance(self.env.action_space, gym.spaces.Discrete):
+            actions_input_shape = (self.env.action_space.n,)
+        else:
+            actions_input_shape = (self.env.action_space.shape[0],)
         self.actions_output_shape = actions_input_shape
         self.input_shapes_env = {}
         for key, obs in self.env.observation_space.spaces.items():
