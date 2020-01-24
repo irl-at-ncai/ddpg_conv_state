@@ -20,6 +20,7 @@ def inherit_docs(cls):
                     break
     return cls
 
+
 # @todo: Task for Hassaan to fix this! Sorry Hassaan :D
 def plot_learning(scores, filename, x=None, window=5):
     n = len(scores)
