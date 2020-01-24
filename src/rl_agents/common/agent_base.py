@@ -2,8 +2,8 @@
 """Defines the base class with common functionality across agents"""
 
 import importlib
-import tensorflow as tf
 import os
+import tensorflow as tf
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 
@@ -17,8 +17,7 @@ class AgentBase():
         gpu_options = tf.GPUOptions(visible_device_list="0")
         self.sess = tf.Session(
             config=tf.ConfigProto(
-                gpu_options=gpu_options,
-            log_device_placement=True))
+                gpu_options=gpu_options, log_device_placement=True))
 
     @staticmethod
     def get_agent(agent_name, env):
