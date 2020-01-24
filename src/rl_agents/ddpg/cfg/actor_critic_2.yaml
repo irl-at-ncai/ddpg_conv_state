@@ -8,4 +8,4 @@ output_params:
   l2: 0.01
 
 network_inputs:
-  robot_state: "robot_state"
+  robot_state: ["robot_state"]
