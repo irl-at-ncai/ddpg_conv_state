@@ -5,23 +5,19 @@ policy gradients.
 """
 
 import importlib
-from collections import namedtuple
+import copy
 import numpy as np
 import tensorflow as tf
 from tensorflow.train import AdamOptimizer
 from tensorflow.losses import mean_squared_error
 from rl_agents.common.agent_base import AgentBase
-from rl_agents.common.state_preprocessors import ImagePreprocessor
 from rl_agents.common.experience_memory import ExperienceMemory
 from rl_agents.common.experience_memory import Transition
 from rl_agents.common.ouanoise import OUActionNoise
-from rl_agents.ddpg.actor import Actor, ActorInputs
-from rl_agents.ddpg.critic import Critic, CriticInputs
+from rl_agents.ddpg.actor import Actor
+from rl_agents.ddpg.critic import Critic
 from rl_agents.common.utils import plot_learning
 import rospy
-
-AgentState = \
-    namedtuple("AgentState", ['image', 'robot_state'])
 
 
 class Agent(AgentBase):
@@ -54,8 +50,6 @@ class Agent(AgentBase):
             rospy.get_param('ddpg/replay_memory_initial_size')
         replay_memory_max_size = \
             rospy.get_param('ddpg/replay_memory_max_size')
-        network_input_image_shape = \
-            rospy.get_param('ddpg/network_input_image_shape')
         actor_critic_model_version = \
             rospy.get_param('ddpg/actor_critic_model_version')
 
@@ -64,36 +58,29 @@ class Agent(AgentBase):
 
         # get environment space info
         # input to critic and output from actor. Shape is the same for both
-        self.actions_input_shape = (self.env.action_space.shape[0],)
-        self.actions_output_shape = self.actions_input_shape
-        self.robot_state_input_shape = (
-            self.env.observation_space['position'].shape[0] +
-            self.env.observation_space['velocity'].shape[0],)
-        self.image_input_shape = env.observation_space['front_cam'].shape
-        self.image_depth_input_shape = \
-            env.observation_space['front_cam_depth'].shape
+        actions_input_shape = (self.env.action_space.shape[0],)
+        self.actions_output_shape = actions_input_shape
+        self.input_shapes_env = {}
+        for key, obs in self.env.observation_space.spaces.items():
+            self.input_shapes_env[key] = obs.shape
 
         # state input info
         rospy.loginfo(
             "Initializing the network with following observations:")
         for idx, (key, value) in \
                 enumerate(env.observation_space.spaces.items()):
-            rospy.loginfo("{}) {} (shape = {})".format(idx, key, value.shape))
+            rospy.loginfo(
+                "{}) {} (shape = {})".format(idx, key, value.shape))
 
-        # define a preprocessor for image input
-        self.image_preprocessor = \
-            ImagePreprocessor(
-                input_shape=self.image_input_shape,
-                output_shape=tuple(network_input_image_shape))
-
-        rospy.loginfo(
-            "Initialized the image preprocessor with the following "
-            """parameters:
-            1) input_shape (shape = {})
-            2) output_shape (shape = {})
-            """.format(
-                self.image_preprocessor.input_shape,
-                self.image_preprocessor.output_shape))
+        # get the learning model used for critic
+        self.preprocessor = \
+            getattr(
+                importlib.import_module(
+                    'rl_agents.{}.actor_critic_{}'.format(
+                        self.name,
+                        actor_critic_model_version.replace('v', ''))),
+                'PreprocessHandler')
+        self.preprocessor = self.preprocessor(self.input_shapes_env)
 
         # get the learning model used for critic
         self.critic_model = \
@@ -113,10 +100,18 @@ class Agent(AgentBase):
                         actor_critic_model_version.replace('v', ''))),
                 'ActorModel')
 
+        self.actor_input_shapes = self.preprocessor.input_shapes
+        self.input_shapes = copy.deepcopy(self.actor_input_shapes)
+
+        # add actions to critic inputs
+        self.input_shapes['actions'] = actions_input_shape
+
         # define experience memory
-        self.noise = OUActionNoise(mean=np.zeros(self.actions_input_shape))
+        self.noise = \
+            OUActionNoise(mean=np.zeros(self.input_shapes['actions']))
         self.exp_memory = \
             ExperienceMemory(
+                state_inputs=self.input_shapes,
                 init_size=replay_memory_initial_size,
                 max_size=replay_memory_max_size)
 
@@ -162,42 +157,18 @@ class Agent(AgentBase):
         self.update_target_network_parameters(first_update=True)
         rospy.loginfo('Done creating agent!')
 
-    def preprocess_state(self, state):
-        """
-        Performs pre-processing operations on the state
-        """
-        # resize images
-        agent_state = []
-        image = \
-            self.image_preprocessor.process(self.sess, state['front_cam'])
-        robot_state = \
-            np.concatenate((state['position'], state['velocity']))
-        agent_state = AgentState(image=image, robot_state=robot_state)
-
-        return agent_state
-
-    def get_actor_inputs(self, agent_state):
-        """
-        Generates actor inputs based on single input state
-        """
-        # add new axes for single input
-        return ActorInputs(
-            robot_state=agent_state.robot_state[np.newaxis, ...],
-            image=agent_state.image[np.newaxis, ...])
-
     def start_training(self):
         """ Trains the network """
         score_history = []
         np.random.seed(0)
         for eps in range(self.n_episodes):
-            state = self.preprocess_state(self.env.reset())
+            state = self.preprocessor.process(self.env.reset(), self.sess)
             done = False
             score = 0
             for step in range(self.max_episode_steps):
-                actor_inputs = self.get_actor_inputs(state)
-                action = self.choose_action(actor_inputs)
+                action = self.choose_action(state)
                 new_state, reward, done, _ = self.env.step(action)
-                new_state = self.preprocess_state(new_state)
+                new_state = self.preprocessor.process(new_state, self.sess)
                 self.exp_memory.add(
                     Transition(state, action, reward, new_state, done, eps))
                 if self.exp_memory.size >= self.batch_size:
@@ -229,9 +200,7 @@ class Agent(AgentBase):
         """
         return Critic(
             sess=self.sess,
-            image_preprocessor=self.image_preprocessor,
-            robot_state_input_shape=self.robot_state_input_shape,
-            actions_input_shape=self.actions_input_shape,
+            input_shapes=self.input_shapes,
             learning_rate=self.lr_critic,
             model=self.critic_model,
             loss_fn=mean_squared_error,
@@ -249,8 +218,7 @@ class Agent(AgentBase):
         """
         return Actor(
             sess=self.sess,
-            image_preprocessor=self.image_preprocessor,
-            robot_state_input_shape=self.robot_state_input_shape,
+            input_shapes=self.actor_input_shapes,
             # output actions from actor are input to critic
             actions_output_shape=self.actions_output_shape,
             action_bound=self.env.action_space.high,
@@ -280,9 +248,9 @@ class Agent(AgentBase):
                     self.target_critic.sess.run(self.update_critic)
                     self.target_actor.sess.run(self.update_actor)
 
-    def choose_action(self, inputs):
-        """ Returns an action based on the current inputs. """
-        action = self.actor.predict(inputs) + self.noise()
+    def choose_action(self, state):
+        """ Returns an action based on the current state input. """
+        action = self.actor.predict(state) + self.noise()
         return action[0]
 
     def learn(self):
@@ -293,61 +261,36 @@ class Agent(AgentBase):
             with tf.device(gpu):
                 samples = \
                     self.exp_memory.sample(self.batch_size)
-                states_batch, actions_batch, rewards_batch, \
-                    next_states_batch, done_batch, _ = \
-                    map(np.array, zip(*samples))
-
-                next_images, next_robot_states = \
-                    map(np.array, zip(*next_states_batch))
 
                 # target q-value(new_state) with actor's bounded action forward
                 # pass
                 target_actions = \
-                    self.target_actor.predict(
-                        ActorInputs(
-                            image=next_images, robot_state=next_robot_states)
-                    )
+                    self.target_actor.predict(samples['s_next'])
 
                 q_values = \
                     self.target_critic.predict(
-                        CriticInputs(
-                            image=next_images,
-                            robot_state=next_robot_states,
-                            actions=target_actions))
+                        {**samples['s_next'], "actions": target_actions}
+                    )
 
                 target = \
                     np.array([
-                        rewards_batch[j] + self.discount_factor * q_values[j] *
-                        done_batch[j]
+                        samples['r'][j] + self.discount_factor * q_values[j] *
+                        samples['done'][j]
                         for j in range(self.batch_size)
                     ])
 
-                images, robot_states = \
-                    map(np.array, zip(*states_batch))
                 self.critic.train(
-                    CriticInputs(
-                        image=images,
-                        robot_state=robot_states,
-                        actions=actions_batch),
-                    target)
+                    {**samples['s'], "actions": samples['a']}, target)
 
                 # a = mu(s_i)
-                actor_inputs = \
-                    ActorInputs(
-                        image=images,
-                        robot_state=robot_states
-                    )
-                next_actions = self.actor.predict(actor_inputs)
-
+                next_actions = self.actor.predict(samples['s'])
                 # gradients of Q w.r.t actions
                 grads = \
                     self.critic.get_action_gradients(
-                        CriticInputs(
-                            image=images,
-                            robot_state=robot_states,
-                            actions=next_actions))
+                        {**samples['s'], "actions": next_actions})
 
-                self.actor.train(actor_inputs, grads[0])
+                # why is gradient zero?
+                self.actor.train(samples['s'], grads[0])
                 self.update_target_network_parameters(first_update=False)
 
     def save_models(self):
