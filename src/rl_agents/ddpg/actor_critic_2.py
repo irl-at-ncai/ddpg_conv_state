@@ -13,8 +13,8 @@ from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.activations import relu, tanh, softmax
-from tensorflow.keras.initializers import random_uniform
-from tensorflow.keras.regularizers import l2
+from tensorflow.compat.v1.keras.initializers import random_uniform
+from tensorflow.compat.v1.keras.regularizers import l2
 from rl_agents.common.utils import inherit_docs
 from rl_agents.common.state_preprocessors import ImagePreprocessor, \
     StateConcatenator
@@ -43,6 +43,7 @@ class PreprocessHandler():
         self.input_shapes_env = input_shapes_env
         self.input_shapes = {}
         for target_key, keys in self.network_inputs.items():
+            print(target_key, keys)
             shapes = [input_shapes_env[key] for key in keys]
             self.input_shapes[target_key] = tuple(map(sum, zip(*shapes)))
         self.setup_input_preprocessors()
