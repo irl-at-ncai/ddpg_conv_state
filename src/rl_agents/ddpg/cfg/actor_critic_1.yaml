@@ -16,3 +16,11 @@ dense_layers:
 output_params:
   noise: 0.0003
   l2: 0.01
+
+network_inputs:
+  robot_state: ["position", "velocity"]
+  image: ["front_cam"]
+  #image_depth: ["front_cam_depth"]
+
+input_image_shape: [60, 80, 4]
+input_depth_image_shape: [60, 80, 1]

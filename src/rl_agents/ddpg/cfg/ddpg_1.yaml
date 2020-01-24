@@ -8,6 +8,5 @@ ddpg:
   batch_size: 64
   n_episodes: 1000
   max_episode_steps: 500
-  network_input_image_shape: [60, 80, 4]
   actor_critic_model_version: 'v1'
   plot_file_name: 'AirSim.png'
