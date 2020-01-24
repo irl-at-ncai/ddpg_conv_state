@@ -2,13 +2,9 @@
 """Defines the actor for DDPG algorithm"""
 
 import os
-from collections import namedtuple
 import tensorflow as tf
 from tensorflow.train import AdamOptimizer
 from rl_agents.ddpg.actor_critic_1 import ActorModel
-
-ActorInputs = \
-    namedtuple("ActorInputs", ['image', 'robot_state'])
 
 
 class Actor(object):
@@ -19,10 +15,8 @@ class Actor(object):
     ----------
     sess : Session
         Tensorflow session
-    image_preprocessor: ImagePreprocessor
-        The preprocessor for image inputs
-    robot_state_input_shape: tuple
-        Shape of the input state of robot state
+    input_shapes: Dict
+        A dictionary containing shapes of inputs to critic
     actions_output_shape: tuple
         Shape of the output actions
     learning_rate: Float
@@ -42,8 +36,7 @@ class Actor(object):
     def __init__(
             self,
             sess,
-            image_preprocessor,
-            robot_state_input_shape,
+            input_shapes,
             actions_output_shape,
             action_bound,
             learning_rate,
@@ -55,8 +48,7 @@ class Actor(object):
             gpu="/gpu:0"):
         with tf.name_scope(scope):
             self.sess = sess
-            self.image_preprocessor = image_preprocessor
-            self.robot_state_input_shape = robot_state_input_shape
+            self.input_shapes = input_shapes
             self.actions_output_shape = actions_output_shape
             self.learning_rate = learning_rate
             self.batch_size = batch_size
@@ -66,8 +58,7 @@ class Actor(object):
             self.model = \
                 model(
                     action_bound=action_bound,
-                    image_input_shape=self.image_preprocessor.output_shape,
-                    robot_state_input_shape=self.robot_state_input_shape,
+                    input_shapes=self.input_shapes,
                     actions_output_shape=self.actions_output_shape,
                     scope=self.scope
                 )
@@ -94,16 +85,14 @@ class Actor(object):
         """ Builds the tensorflow model graph """
         with tf.name_scope(self.scope):
             # define inputs
-            self.image_input = \
-                tf.placeholder(
-                    name='image_input',
-                    shape=(None, *self.image_preprocessor.output_shape),
-                    dtype=tf.float32)
-            self.robot_state_input = \
-                tf.placeholder(
-                    name='robot_state_input',
-                    shape=(None, *self.robot_state_input_shape),
-                    dtype=tf.float32)
+            self.input_phs = {}
+            for key, value in self.input_shapes.items():
+                self.input_phs[key] = \
+                    tf.placeholder(
+                        name=key,
+                        shape=(None, *value),
+                        dtype=tf.float32)
+
             self.actions_gradients = \
                 tf.placeholder(
                     name='actions_gradients',
@@ -111,11 +100,7 @@ class Actor(object):
                     dtype=tf.float32)
 
             # process inputs
-            self.actions = \
-                self.model(
-                    ActorInputs(
-                        self.image_input,
-                        self.robot_state_input))
+            self.actions = self.model(self.input_phs)
 
             # minimize loss
             self.params = tf.trainable_variables(scope=self.scope)
@@ -136,26 +121,28 @@ class Actor(object):
         """
         Performs the forward pass for the network to predict action
         """
+        feed_dict = {}
+        for key, value in self.input_phs.items():
+            feed_dict[value] = inputs[key]
         with tf.device(self.gpu):
             return \
                 self.sess.run(
                     self.actions,
-                    feed_dict={
-                        self.image_input: inputs.image,
-                        self.robot_state_input: inputs.robot_state})
+                    feed_dict=feed_dict)
 
     def train(self, inputs, actions_gradients):
         """
         Performs the back-propagation of gradient for loss minimization
         """
+        feed_dict = {}
+        for key, value in self.input_phs.items():
+            feed_dict[value] = inputs[key]
+        feed_dict[self.actions_gradients] = actions_gradients
         with tf.device(self.gpu):
             _ = \
                 self.sess.run(
                     self.optimize,
-                    feed_dict={
-                        self.image_input: inputs.image,
-                        self.robot_state_input: inputs.robot_state,
-                        self.actions_gradients: actions_gradients})
+                    feed_dict=feed_dict)
 
     def save_checkpoint(self):
         """Saves the model checkpoint"""

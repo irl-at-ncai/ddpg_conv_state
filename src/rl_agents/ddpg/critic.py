@@ -2,14 +2,10 @@
 """Defines the critic for DDPG algorithm"""
 
 import os
-from collections import namedtuple
 import tensorflow as tf
 from tensorflow.train import AdamOptimizer
 from tensorflow.losses import mean_squared_error
 from rl_agents.ddpg.actor_critic_1 import CriticModel
-
-CriticInputs = \
-    namedtuple("CriticInputs", ['image', 'robot_state', 'actions'])
 
 
 class Critic(object):
@@ -20,12 +16,8 @@ class Critic(object):
     ----------
     sess : Session
         Tensorflow session
-    image_preprocessor: ImagePreprocessor
-        The preprocessor for image inputs
-    robot_state_input_shape: tuple
-        Shape of the input state of the robot state
-    actions_input_shape: tuple
-        Shape of the input actions
+    input_shapes: Dict
+        A dictionary containing shapes of inputs to critic
     learning_rate: Float
         Learning rate for network
     model: tf.Keras.Model
@@ -43,9 +35,7 @@ class Critic(object):
     def __init__(
             self,
             sess,
-            image_preprocessor,
-            robot_state_input_shape,
-            actions_input_shape,
+            input_shapes,
             learning_rate,
             model=CriticModel,
             loss_fn=mean_squared_error,
@@ -55,21 +45,14 @@ class Critic(object):
             gpu="/gpu:0"):
         with tf.name_scope(scope):
             self.sess = sess
-            self.image_preprocessor = image_preprocessor
-            self.robot_state_input_shape = robot_state_input_shape
-            self.actions_input_shape = actions_input_shape
+            self.input_shapes = input_shapes
             self.learning_rate = learning_rate
             self.loss_fn = loss_fn
             self.optimizer = optimizer
             self.scope = scope
             self.gpu = gpu
             self.model = \
-                model(
-                    image_input_shape=self.image_preprocessor.output_shape,
-                    robot_state_input_shape=self.robot_state_input_shape,
-                    actions_input_shape=self.actions_input_shape,
-                    scope=self.scope
-                )
+                model(input_shapes=self.input_shapes, scope=self.scope)
 
             self.checkpoint_file = \
                 os.path.join(summaries_dir, scope + '_ddpg.checkpoint')
@@ -94,21 +77,13 @@ class Critic(object):
         """ Builds the tensorflow model graph """
         with tf.name_scope(self.scope):
             # define inputs
-            self.image_input = \
-                tf.placeholder(
-                    name='image_input',
-                    shape=(None, *self.image_preprocessor.output_shape),
-                    dtype=tf.float32)
-            self.robot_state_input = \
-                tf.placeholder(
-                    name='robot_state_input',
-                    shape=(None, *self.robot_state_input_shape),
-                    dtype=tf.float32)
-            self.actions_input = \
-                tf.placeholder(
-                    name='actions_input',
-                    shape=(None, *self.actions_input_shape),
-                    dtype=tf.float32)
+            self.input_phs = {}
+            for key, value in self.input_shapes.items():
+                self.input_phs[key] = \
+                    tf.placeholder(
+                        name=key,
+                        shape=(None, *value),
+                        dtype=tf.float32)
 
             # define outputs
             self.q_target = \
@@ -118,12 +93,7 @@ class Critic(object):
                     dtype=tf.float32)
 
             # process inputs
-            self.q_value = \
-                self.model(
-                    CriticInputs(
-                        self.image_input,
-                        self.robot_state_input,
-                        self.actions_input))
+            self.q_value = self.model(self.input_phs)
 
             # minimize loss
             self.loss = self.loss_fn(self.q_target, self.q_value)
@@ -131,7 +101,7 @@ class Critic(object):
             self.optimize = \
                 self.optimizer(self.learning_rate).minimize(self.loss)
             self.action_gradients = \
-                tf.gradients(self.q_value, self.actions_input)
+                tf.gradients(self.q_value, self.input_phs['actions'])
 
             # Summaries for Tensorboard
             # self.summaries = tf.summary.merge([
@@ -143,54 +113,50 @@ class Critic(object):
         Performs the forward pass for the network to predict action Q-value
         """
         with tf.device(self.gpu):
+            feed_dict = {}
+            for key, value in self.input_phs.items():
+                feed_dict[value] = inputs[key]
             return \
                 self.sess.run(
                     self.q_value,
-                    feed_dict={
-                        self.image_input: inputs.image,
-                        self.robot_state_input: inputs.robot_state,
-                        self.actions_input: inputs.actions})
+                    feed_dict=feed_dict)
 
     def train(self, inputs, q_target):
         """
         Performs the back-propagation of gradient for loss minimization
         """
         with tf.device(self.gpu):
-            if False: # @todo: summaries have errors
+            feed_dict = {}
+            for key, value in self.input_phs.items():
+                feed_dict[value] = inputs[key]
+            feed_dict[self.q_target] = q_target
+            if False:  # @todo: summaries have errors
                 _, summaries, global_step = \
                     self.sess.run(
                         [
                             self.optimize,
                             self.summaries,
                             tf.contrib.framework.get_global_step()],
-                        feed_dict={
-                            self.image_input: inputs.image,
-                            self.robot_state_input: inputs.robot_state,
-                            self.actions_input: inputs.actions,
-                            self.q_target: q_target})
+                        feed_dict=feed_dict)
                 self.summary_writer.add_summary(summaries, global_step)
             else:
                 _ = \
                     self.sess.run(
                         self.optimize,
-                        feed_dict={
-                            self.image_input: inputs.image,
-                            self.robot_state_input: inputs.robot_state,
-                            self.actions_input: inputs.actions,
-                            self.q_target: q_target})
+                        feed_dict=feed_dict)
 
     def get_action_gradients(self, inputs):
         """
         Returns the action gradients with respect to Q-values
         """
         with tf.device(self.gpu):
+            feed_dict = {}
+            for key, value in self.input_phs.items():
+                feed_dict[value] = inputs[key]
             return \
                 self.sess.run(
                     self.action_gradients,
-                    feed_dict={
-                        self.image_input: inputs.image,
-                        self.robot_state_input: inputs.robot_state,
-                        self.actions_input: inputs.actions})
+                    feed_dict=feed_dict)
 
     def save_checkpoint(self):
         """Saves the model checkpoint"""
