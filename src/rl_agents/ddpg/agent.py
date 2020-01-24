@@ -60,10 +60,9 @@ class Agent(AgentBase):
         # get environment space info
         # input to critic and output from actor. Shape is the same for both
         if isinstance(self.env.action_space, gym.spaces.Discrete):
-            actions_input_shape = (self.env.action_space.n,)
+            self.actions_shape = (self.env.action_space.n,)
         else:
-            actions_input_shape = (self.env.action_space.shape[0],)
-        self.actions_output_shape = actions_input_shape
+            self.actions_shape = (self.env.action_space.shape[0],)
         self.input_shapes_env = {}
         for key, obs in self.env.observation_space.spaces.items():
             self.input_shapes_env[key] = obs.shape
@@ -86,6 +85,9 @@ class Agent(AgentBase):
                 'PreprocessHandler')
         self.preprocessor = self.preprocessor(self.input_shapes_env)
 
+        self.actor_input_shapes = self.preprocessor.input_shapes
+        self.input_shapes = copy.deepcopy(self.actor_input_shapes)
+
         # get the learning model used for critic
         self.critic_model = \
             getattr(
@@ -96,7 +98,7 @@ class Agent(AgentBase):
                 'CriticModel')
 
         # get the learning model used for actor
-        self.actor_model = \
+        self.actor_model_fn = \
             getattr(
                 importlib.import_module(
                     'rl_agents.{}.actor_critic_{}'.format(
@@ -104,11 +106,19 @@ class Agent(AgentBase):
                         actor_critic_model_version.replace('v', ''))),
                 'ActorModel')
 
-        self.actor_input_shapes = self.preprocessor.input_shapes
-        self.input_shapes = copy.deepcopy(self.actor_input_shapes)
+        # initialize actor model
+        action_bound = None
+        if not isinstance(self.env.action_space, gym.spaces.Discrete):
+            action_bound = self.env.action_space.high
+        self.actor_model = \
+            self.actor_model_fn(
+                action_bound=action_bound,
+                input_shapes=self.actor_input_shapes,
+                actions_output_shape=self.actions_shape
+            )
 
         # add actions to critic inputs
-        self.input_shapes['actions'] = actions_input_shape
+        self.input_shapes['actions'] = self.actions_shape
 
         # define experience memory
         self.noise = \
@@ -224,8 +234,7 @@ class Agent(AgentBase):
             sess=self.sess,
             input_shapes=self.actor_input_shapes,
             # output actions from actor are input to critic
-            actions_output_shape=self.actions_output_shape,
-            action_bound=self.env.action_space.high,
+            actions_output_shape=self.actions_shape,
             learning_rate=self.lr_critic,
             batch_size=self.batch_size,
             model=self.actor_model,
