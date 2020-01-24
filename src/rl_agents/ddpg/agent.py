@@ -153,7 +153,7 @@ class Agent(AgentBase):
             for i in range(len(self.target_critic.params))
         ]
 
-        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.compat.v1.global_variables_initializer())
         self.update_target_network_parameters(first_update=True)
         rospy.loginfo('Done creating agent!')
 

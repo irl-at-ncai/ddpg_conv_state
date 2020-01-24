@@ -123,7 +123,7 @@ class ActorCriticBase(tf.keras.Model):
             input_shapes,
             scope='actor_critic_1',
             cfg='actor_critic_1'):
-        with tf.name_scope(scope):
+        with tf.compat.v1.name_scope(scope):
             super(ActorCriticBase, self).__init__()
 
             script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -279,7 +279,7 @@ class CriticModel(ActorCriticBase):
             input_shapes,
             scope='critic_model_1',
             cfg='actor_critic_1'):
-        with tf.name_scope(scope):
+        with tf.compat.v1.name_scope(scope):
             super(CriticModel, self).__init__(
                 input_shapes,
                 scope,
@@ -354,7 +354,7 @@ class ActorModel(ActorCriticBase):
             actions_output_shape=(4,),
             scope='actor_model_1',
             cfg='actor_critic_1'):
-        with tf.name_scope(scope):
+        with tf.compat.v1.name_scope(scope):
             super(ActorModel, self).__init__(
                 input_shapes,
                 scope,

@@ -43,7 +43,7 @@ class Critic(object):
             scope='critic',
             summaries_dir='tmp/ddpg/critic',
             gpu="/gpu:0"):
-        with tf.name_scope(scope):
+        with tf.compat.v1.name_scope(scope):
             self.sess = sess
             self.input_shapes = input_shapes
             self.learning_rate = learning_rate
@@ -69,25 +69,25 @@ class Critic(object):
                 if not os.path.exists(summary_dir):
                     os.makedirs(summary_dir)
                 self.summary_writer = \
-                    tf.summary.FileWriter(summary_dir)
+                    tf.compat.v1.summary.FileWriter(summary_dir)
 
-            self.saver = tf.train.Saver()
+            self.saver = tf.compat.v1.train.Saver()
 
     def build(self):
         """ Builds the tensorflow model graph """
-        with tf.name_scope(self.scope):
+        with tf.compat.v1.name_scope(self.scope):
             # define inputs
             self.input_phs = {}
             for key, value in self.input_shapes.items():
                 self.input_phs[key] = \
-                    tf.placeholder(
+                    tf.compat.v1.placeholder(
                         name=key,
                         shape=(None, *value),
                         dtype=tf.float32)
 
             # define outputs
             self.q_target = \
-                tf.placeholder(
+                tf.compat.v1.placeholder(
                     name='q_target',
                     shape=(None, 1),
                     dtype=tf.float32)
@@ -97,11 +97,11 @@ class Critic(object):
 
             # minimize loss
             self.loss = self.loss_fn(self.q_target, self.q_value)
-            self.params = tf.trainable_variables(scope=self.scope)
+            self.params = tf.compat.v1.trainable_variables(scope=self.scope)
             self.optimize = \
                 self.optimizer(self.learning_rate).minimize(self.loss)
             self.action_gradients = \
-                tf.gradients(self.q_value, self.input_phs['actions'])
+                tf.gradients(ys=self.q_value, xs=self.input_phs['actions'])
 
             # Summaries for Tensorboard
             # self.summaries = tf.summary.merge([

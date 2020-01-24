@@ -46,7 +46,7 @@ class Actor(object):
             scope='actor',
             summaries_dir='tmp/ddpg/actor',
             gpu="/gpu:0"):
-        with tf.name_scope(scope):
+        with tf.compat.v1.name_scope(scope):
             self.sess = sess
             self.input_shapes = input_shapes
             self.actions_output_shape = actions_output_shape
@@ -73,28 +73,28 @@ class Actor(object):
                 if not os.path.exists(summary_dir):
                     os.makedirs(summary_dir)
                 self.summary_writer = \
-                    tf.summary.FileWriter(summary_dir)
+                    tf.compat.v1.summary.FileWriter(summary_dir)
 
             with tf.device(self.gpu):
                 # Build the graph
                 self.build()
 
-            self.saver = tf.train.Saver()
+            self.saver = tf.compat.v1.train.Saver()
 
     def build(self):
         """ Builds the tensorflow model graph """
-        with tf.name_scope(self.scope):
+        with tf.compat.v1.name_scope(self.scope):
             # define inputs
             self.input_phs = {}
             for key, value in self.input_shapes.items():
                 self.input_phs[key] = \
-                    tf.placeholder(
+                    tf.compat.v1.placeholder(
                         name=key,
                         shape=(None, *value),
                         dtype=tf.float32)
 
             self.actions_gradients = \
-                tf.placeholder(
+                tf.compat.v1.placeholder(
                     name='actions_gradients',
                     shape=(None, *self.actions_output_shape),
                     dtype=tf.float32)
@@ -103,12 +103,14 @@ class Actor(object):
             self.actions = self.model(self.input_phs)
 
             # minimize loss
-            self.params = tf.trainable_variables(scope=self.scope)
+            self.params = tf.compat.v1.trainable_variables(scope=self.scope)
 
             # action gradients come from critic
             self.unnormalized_actor_gradients = \
                 tf.gradients(
-                    self.actions, self.params, -self.actions_gradients)
+                    ys=self.actions,
+                    xs=self.params,
+                    grad_ys=-self.actions_gradients)
             self.actor_gradients = \
                 list(
                     map(lambda x: tf.math.divide(x, self.batch_size),

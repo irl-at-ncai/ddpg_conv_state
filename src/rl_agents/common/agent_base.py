@@ -14,9 +14,9 @@ class AgentBase():
     def __init__(self, agent_name, env):
         self.name = agent_name
         self.env = env
-        gpu_options = tf.GPUOptions(visible_device_list="0")
-        self.sess = tf.Session(
-            config=tf.ConfigProto(
+        gpu_options = tf.compat.v1.GPUOptions(visible_device_list="0")
+        self.sess = tf.compat.v1.Session(
+            config=tf.compat.v1.ConfigProto(
                 gpu_options=gpu_options, log_device_placement=True))
 
     @staticmethod

@@ -33,9 +33,9 @@ class ImagePreprocessor:
         self.input_shape = input_shape
         self.output_shape = output_shape
         # Make a tensorflow graph for processing input images
-        with tf.name_scope("image_preprocessor"):
+        with tf.compat.v1.name_scope("image_preprocessor"):
             self.input = \
-                tf.placeholder(
+                tf.compat.v1.placeholder(
                     name="image_input", shape=input_shape, dtype=input_type)
             self.output = \
                 tf.image.resize(
