@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Defines the experience memory for observations and observation sequences"""
 
-import random
 from collections import namedtuple
+import numpy as np
+from numpy_ringbuffer import RingBuffer
 
-Transition = namedtuple('Transition', ['s', 'a', 'r', 's_next', 'done', 'eps'])
+
+TRANSITION_ELEMS = ['s', 'a', 'r', 's_next', 'done', 'eps']
+Transition = \
+    namedtuple('Transition', TRANSITION_ELEMS)
 
 
 class BuffeInitialSizeUnfilledError(Exception):
@@ -28,12 +32,35 @@ class ExperienceMemory:
         Uses prioritized sampling if True
     """
     def __init__(
-            self, init_size=int(5e4), max_size=int(1e5), prioritized=False):
+            self,
+            state_inputs,
+            init_size=int(5e4),
+            max_size=int(1e5),
+            prioritized=False):
         self.init_size = init_size
         self.max_size = max_size
         self.prioritized = prioritized
         self.size = 0
-        self.buffer = []
+        self.state_inputs = state_inputs
+        self.buffers = {}
+        for elem in TRANSITION_ELEMS:
+            if elem in ['s', 's_next']:
+                self.buffers[elem] = {}
+                for key in state_inputs.keys():
+                    self.buffers[elem][key] = \
+                        RingBuffer(
+                            capacity=max_size,
+                            dtype=(np.float32, state_inputs[key]))
+            elif elem is 'a':
+                self.buffers[elem] = \
+                    RingBuffer(
+                        capacity=max_size,
+                        dtype=(np.float32, state_inputs['actions']))
+            else:
+                self.buffers[elem] = \
+                    RingBuffer(
+                        capacity=max_size,
+                        dtype=np.float32)
 
     def add(self, transition):
         """
@@ -44,11 +71,16 @@ class ExperienceMemory:
         transition: Transition
             A single transition step in the episode
         """
-        if self.size >= self.max_size:
-            del self.buffer[0]
-        else:
+        t_dict = transition._asdict()
+        if self.size < self.max_size:
             self.size += 1
-        self.buffer.append(transition)
+
+        for elem in TRANSITION_ELEMS:
+            if elem in ['s', 's_next']:
+                for key, value in t_dict[elem].items():
+                    self.buffers[elem][key].append(value)
+            else:
+                self.buffers[elem].append(t_dict[elem])
 
     def sample(self, sample_size=32):
         """
@@ -64,7 +96,16 @@ class ExperienceMemory:
                 '''Experience memory sampled before required initial size
                 is reached. {}/{}'''.format(self.size, self.init_size))
         if not self.prioritized:
-            return random.sample(self.buffer, sample_size)
+            batches = {}
+            indices = np.random.choice(self.size, sample_size)
+            for elem in TRANSITION_ELEMS:
+                if elem in ['s', 's_next']:
+                    batches[elem] = {}
+                    for key in self.state_inputs.keys():
+                        batches[elem][key] = self.buffers[elem][key][indices]
+                else:
+                    batches[elem] = self.buffers[elem][indices]
+            return batches
         else:
             raise NotImplementedError()
 
@@ -95,6 +136,9 @@ class ExperienceTrajMemory(ExperienceMemory):
         """
         Samples the data of given size from the buffer
 
+        Todo: Update sampling for trajectories according to new ring buffer
+            implementation
+
         Parameters
         ----------
         sample_size: int
@@ -113,11 +157,11 @@ class ExperienceTrajMemory(ExperienceMemory):
         # get indices for all elements that have at least length = trace_length
         # within an episode
         while True:
-            idx = random.choice(range(self.size))
-            last = idx+trace_length-1
-            if last < self.size and \
-                    self.buffer[idx].eps == self.buffer[last].eps:
-                traced_exp.append(self.buffer[idx:last+1])
+            # idx = random.choice(range(self.size))
+            # last = idx+trace_length-1
+            # if last < self.size and \
+            #         self.buffer[idx].eps == self.buffer[last].eps:
+            #     traced_exp.append(self.buffer[idx:last+1])
             if len(traced_exp) == sample_size:
                 break
             return traced_exp
