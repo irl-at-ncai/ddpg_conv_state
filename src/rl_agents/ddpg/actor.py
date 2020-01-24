@@ -38,7 +38,6 @@ class Actor(object):
             sess,
             input_shapes,
             actions_output_shape,
-            action_bound,
             learning_rate,
             batch_size,
             model=ActorModel,
@@ -55,13 +54,7 @@ class Actor(object):
             self.optimizer = optimizer
             self.scope = scope
             self.gpu = gpu
-            self.model = \
-                model(
-                    action_bound=action_bound,
-                    input_shapes=self.input_shapes,
-                    actions_output_shape=self.actions_output_shape,
-                    scope=self.scope
-                )
+            self.model = model
 
             self.checkpoint_file = \
                 os.path.join(summaries_dir, scope + '_ddpg.checkpoint')
