@@ -51,8 +51,7 @@ class Critic(object):
             self.optimizer = optimizer
             self.scope = scope
             self.gpu = gpu
-            self.model = \
-                model(input_shapes=self.input_shapes, scope=self.scope)
+            self.model = model
 
             self.checkpoint_file = \
                 os.path.join(summaries_dir, scope + '_ddpg.checkpoint')
