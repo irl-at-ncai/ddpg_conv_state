@@ -122,44 +122,49 @@ class ActorCriticBase(tf.keras.Model):
             self,
             input_shapes,
             scope='actor_critic_1',
-            cfg='actor_critic_1'):
-        with tf.compat.v1.name_scope(scope):
-            super(ActorCriticBase, self).__init__()
+            cfg='actor_critic_1',
+            gpu='/device:GPU:0'):
+        with tf.device(gpu):
+            with tf.compat.v1.name_scope(scope):
+                super(ActorCriticBase, self).__init__()
 
-            script_dir = os.path.dirname(os.path.realpath(__file__))
-            with open(script_dir + '/cfg/' + cfg + '.yaml') as config_file:
-                self.config = yaml.load(config_file, Loader=yaml.FullLoader)
-            self.input_shapes = input_shapes
+                script_dir = os.path.dirname(os.path.realpath(__file__))
+                with open(script_dir + '/cfg/' + cfg + '.yaml') as config_file:
+                    self.config = \
+                        yaml.load(config_file, Loader=yaml.FullLoader)
+                self.input_shapes = input_shapes
 
-            if any(
-                    not isinstance(v, tuple)
-                    for k, v in self.input_shapes.items()):
-                rospy.logerr(
-                    'Model input shapes {} must be tuples.'
-                    .format(self.input_shapes))
+                if any(
+                        not isinstance(v, tuple)
+                        for k, v in self.input_shapes.items()):
+                    rospy.logerr(
+                        'Model input shapes {} must be tuples.'
+                        .format(self.input_shapes))
 
-            conv_layer_sizes = self.config['conv_layers']['sizes']
-            conv_kernels = self.config['conv_layers']['kernels']
-            dense_layer_sizes = self.config['dense_layers']['sizes']
+                conv_layer_sizes = self.config['conv_layers']['sizes']
+                conv_kernels = self.config['conv_layers']['kernels']
+                dense_layer_sizes = self.config['dense_layers']['sizes']
 
-            # first three layers for image input
-            self.conv1 = \
-                self.make_conv2d_layer(
-                    conv_layer_sizes['c1'],
-                    conv_kernels['c1'],
-                    input_shape=self.input_shapes['image'])
-            self.conv2 = \
-                self.make_conv2d_layer(
-                    conv_layer_sizes['c2'], conv_kernels['c2'])
-            self.conv3 = \
-                self.make_conv2d_layer(
-                    conv_layer_sizes['c3'], conv_kernels['c3'])
-            # convolution to dense layer connection
-            self.dense4_image = self.make_dense_layer(dense_layer_sizes['d4'])
-            # state input to dense layer connection
-            self.dense4_state = \
-                self.make_dense_layer(
-                    dense_layer_sizes['d4'], self.input_shapes['robot_state'])
+                # first three layers for image input
+                self.conv1 = \
+                    self.make_conv2d_layer(
+                        conv_layer_sizes['c1'],
+                        conv_kernels['c1'],
+                        input_shape=self.input_shapes['image'])
+                self.conv2 = \
+                    self.make_conv2d_layer(
+                        conv_layer_sizes['c2'], conv_kernels['c2'])
+                self.conv3 = \
+                    self.make_conv2d_layer(
+                        conv_layer_sizes['c3'], conv_kernels['c3'])
+                # convolution to dense layer connection
+                self.dense4_image = \
+                    self.make_dense_layer(dense_layer_sizes['d4'])
+                # state input to dense layer connection
+                self.dense4_state = \
+                    self.make_dense_layer(
+                        dense_layer_sizes['d4'],
+                        self.input_shapes['robot_state'])
 
     # pylint: disable=arguments-differ
     def call(self, inputs):
@@ -278,35 +283,37 @@ class CriticModel(ActorCriticBase):
             self,
             input_shapes,
             scope='critic_model_1',
-            cfg='actor_critic_1'):
-        with tf.compat.v1.name_scope(scope):
-            super(CriticModel, self).__init__(
-                input_shapes,
-                scope,
-                cfg)
+            cfg='actor_critic_1',
+            gpu='/device:GPU:0'):
+        with tf.device(gpu):
+            with tf.compat.v1.name_scope(scope):
+                super(CriticModel, self).__init__(
+                    input_shapes,
+                    scope,
+                    cfg)
 
-            dense_layer_sizes = self.config['dense_layers']['sizes']
-            output_layer_params = self.config['output_params']
+                dense_layer_sizes = self.config['dense_layers']['sizes']
+                output_layer_params = self.config['output_params']
 
-            # final dense layer for features
-            self.dense5_features = \
-                self.make_dense_layer(dense_layer_sizes['d5'])
-            # final dense layer for actions input
-            self.dense5_actions = \
-                self.make_dense_layer(
-                    dense_layer_sizes['d5'],
-                    input_shape=input_shapes['actions'])
-            # returns the q-value for the action taken
-            self.dense6 = \
-                Dense(
-                    units=1,
-                    kernel_initializer=random_uniform(
-                        minval=-output_layer_params['noise'],
-                        maxval=output_layer_params['noise']),
-                    bias_initializer=random_uniform(
-                        -output_layer_params['noise'],
-                        output_layer_params['noise']),
-                    kernel_regularizer=l2(output_layer_params['l2']))
+                # final dense layer for features
+                self.dense5_features = \
+                    self.make_dense_layer(dense_layer_sizes['d5'])
+                # final dense layer for actions input
+                self.dense5_actions = \
+                    self.make_dense_layer(
+                        dense_layer_sizes['d5'],
+                        input_shape=input_shapes['actions'])
+                # returns the q-value for the action taken
+                self.dense6 = \
+                    Dense(
+                        units=1,
+                        kernel_initializer=random_uniform(
+                            minval=-output_layer_params['noise'],
+                            maxval=output_layer_params['noise']),
+                        bias_initializer=random_uniform(
+                            -output_layer_params['noise'],
+                            output_layer_params['noise']),
+                        kernel_regularizer=l2(output_layer_params['l2']))
 
     # pylint: disable=arguments-differ
     def call(self, inputs):
@@ -353,34 +360,36 @@ class ActorModel(ActorCriticBase):
             input_shapes,
             actions_output_shape=(4,),
             scope='actor_model_1',
-            cfg='actor_critic_1'):
-        with tf.compat.v1.name_scope(scope):
-            super(ActorModel, self).__init__(
-                input_shapes,
-                scope,
-                cfg)
+            cfg='actor_critic_1',
+            gpu='/device:GPU:0'):
+        with tf.device(gpu):
+            with tf.compat.v1.name_scope(scope):
+                super(ActorModel, self).__init__(
+                    input_shapes,
+                    scope,
+                    cfg)
 
-            dense_layer_sizes = self.config['dense_layers']['sizes']
-            output_layer_params = self.config['output_params']
+                dense_layer_sizes = self.config['dense_layers']['sizes']
+                output_layer_params = self.config['output_params']
 
-            # action cut off
-            self.action_bound = action_bound
+                # action cut off
+                self.action_bound = action_bound
 
-            # final dense layer for features
-            self.dense5_features = \
-                self.make_dense_layer(dense_layer_sizes['d5'])
+                # final dense layer for features
+                self.dense5_features = \
+                    self.make_dense_layer(dense_layer_sizes['d5'])
 
-            # returns the q-value for the action taken
-            self.dense6 = \
-                Dense(
-                    units=actions_output_shape[0],
-                    kernel_initializer=random_uniform(
-                        minval=-output_layer_params['noise'],
-                        maxval=output_layer_params['noise']),
-                    bias_initializer=random_uniform(
-                        -output_layer_params['noise'],
-                        output_layer_params['noise']),
-                    kernel_regularizer=l2(output_layer_params['l2']))
+                # returns the q-value for the action taken
+                self.dense6 = \
+                    Dense(
+                        units=actions_output_shape[0],
+                        kernel_initializer=random_uniform(
+                            minval=-output_layer_params['noise'],
+                            maxval=output_layer_params['noise']),
+                        bias_initializer=random_uniform(
+                            -output_layer_params['noise'],
+                            output_layer_params['noise']),
+                        kernel_regularizer=l2(output_layer_params['l2']))
 
     # pylint: disable=arguments-differ
     def call(self, inputs):
