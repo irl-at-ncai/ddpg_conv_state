@@ -87,36 +87,6 @@ class Agent(AgentBase):
 
         self.actor_input_shapes = self.preprocessor.input_shapes
         self.input_shapes = copy.deepcopy(self.actor_input_shapes)
-
-        # get the learning model used for critic
-        self.critic_model = \
-            getattr(
-                importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
-                'CriticModel')
-
-        # get the learning model used for actor
-        self.actor_model_fn = \
-            getattr(
-                importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
-                'ActorModel')
-
-        # initialize actor model
-        action_bound = None
-        if not isinstance(self.env.action_space, gym.spaces.Discrete):
-            action_bound = self.env.action_space.high
-        self.actor_model = \
-            self.actor_model_fn(
-                action_bound=action_bound,
-                input_shapes=self.actor_input_shapes,
-                actions_output_shape=self.actions_shape
-            )
-
         # add actions to critic inputs
         self.input_shapes['actions'] = self.actions_shape
 
@@ -129,21 +99,30 @@ class Agent(AgentBase):
                 init_size=replay_memory_initial_size,
                 max_size=replay_memory_max_size)
 
+        self.shared_gpu = "/job:localhost/replica:0/task:0/device:GPU:0"
+        self.actor_gpu = "/job:localhost/replica:0/task:0/device:GPU:0"
+        self.critic_gpu = "/job:localhost/replica:0/task:0/device:GPU:0"
+
         # define critics
         self.critic = \
             self.make_critic(
-                scope='critic', summaries_dir='tmp/ddpg/critic')
+                scope='critic',
+                summaries_dir='tmp/ddpg/critic')
         self.target_critic = \
             self.make_critic(
-                scope='target_critic', summaries_dir='tmp/ddpg/target_critic')
+                scope='target_critic',
+                summaries_dir='tmp/ddpg/target_critic')
 
         # define actors
         self.actor = \
             self.make_actor(
-                scope='actor', summaries_dir='tmp/ddpg/actor')
+                scope='actor',
+                summaries_dir='tmp/ddpg/actor')
+
         self.target_actor = \
             self.make_actor(
-                scope='target_actor', summaries_dir='tmp/ddpg/target_actor')
+                scope='target_actor',
+                summaries_dir='tmp/ddpg/target_actor')
 
         self.update_actor = [
             self.target_actor.params[i].assign(
@@ -167,8 +146,9 @@ class Agent(AgentBase):
             for i in range(len(self.target_critic.params))
         ]
 
-        self.sess.run(tf.compat.v1.global_variables_initializer())
-        self.update_target_network_parameters(first_update=True)
+        with tf.device(self.shared_gpu):
+            self.sess.run(tf.compat.v1.global_variables_initializer())
+            self.update_target_network_parameters(first_update=True)
         rospy.loginfo('Done creating agent!')
 
     def start_training(self):
@@ -212,16 +192,33 @@ class Agent(AgentBase):
         """
         Initializes and returns a critic
         """
+        # get the learning model used for critic
+        actor_critic_model_version = \
+            rospy.get_param('ddpg/actor_critic_model_version')
+        critic_model_fn = \
+            getattr(
+                importlib.import_module(
+                    'rl_agents.{}.actor_critic_{}'.format(
+                        self.name,
+                        actor_critic_model_version.replace('v', ''))),
+                'CriticModel')
+
+        critic_model = \
+            critic_model_fn(
+                input_shapes=self.input_shapes,
+                scope=scope+'_model',
+                gpu=self.critic_gpu
+            )
         return Critic(
             sess=self.sess,
             input_shapes=self.input_shapes,
             learning_rate=self.lr_critic,
-            model=self.critic_model,
+            model=critic_model,
             loss_fn=mean_squared_error,
             optimizer=AdamOptimizer,
             scope=scope,
             summaries_dir=summaries_dir,
-            gpu="/gpu:0")
+            gpu=self.critic_gpu)
 
     def make_actor(
             self,
@@ -230,24 +227,48 @@ class Agent(AgentBase):
         """
         Initializes and returns an actor
         """
+        # get the learning model used for actor
+        actor_critic_model_version = \
+            rospy.get_param('ddpg/actor_critic_model_version')
+        actor_model_fn = \
+            getattr(
+                importlib.import_module(
+                    'rl_agents.{}.actor_critic_{}'.format(
+                        self.name,
+                        actor_critic_model_version.replace('v', ''))),
+                'ActorModel')
+
+        # initialize actor model
+        action_bound = None
+        if not isinstance(self.env.action_space, gym.spaces.Discrete):
+            action_bound = self.env.action_space.high
+        actor_model = \
+            actor_model_fn(
+                action_bound=action_bound,
+                input_shapes=self.actor_input_shapes,
+                actions_output_shape=self.actions_shape,
+                scope=scope+'_model',
+                gpu=self.actor_gpu
+            )
+
         return Actor(
             sess=self.sess,
             input_shapes=self.actor_input_shapes,
             # output actions from actor are input to critic
             actions_output_shape=self.actions_shape,
-            learning_rate=self.lr_critic,
+            learning_rate=self.lr_actor,
             batch_size=self.batch_size,
-            model=self.actor_model,
+            model=actor_model,
             optimizer=AdamOptimizer,
             scope=scope,
             summaries_dir=summaries_dir,
-            gpu="/gpu:0")
+            gpu=self.actor_gpu)
 
     def update_target_network_parameters(self, first_update=False):
         """
         Updates the target networks from main networks with a soft-update
         """
-        for _, gpu in enumerate(["/gpu:0"]):
+        for gpu in [self.shared_gpu]:
             with tf.device(gpu):
                 if first_update:
                     old_target_soft_update_weight = \
