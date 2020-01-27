@@ -1,5 +1,8 @@
 <launch>
+		<arg name="model" default="actor_critic_1"/>
+
     <!-- load configuration -->
     <rosparam command="load"
         file="$(find rl_agents)/src/rl_agents/ddpg/cfg/ddpg_1.yaml" />
+    <rosparam param="model" subst_value="True">$(arg model)</rosparam>
 </launch>

@@ -1,6 +1,9 @@
 <launch>
     <arg name="agent" default="ddpg"/>
-		<rosparam command="load" file="$(find rl_agents)/cfg/agent.yaml" />    
+    <arg name="model" default="actor_critic_1"/>
+		<rosparam command="load" file="$(find rl_agents)/cfg/agent.yaml" />
+		
+		<rosparam param="model" subst_value="True">$(arg model)</rosparam>
 
     <!-- launch rl_agent internal launch file -->
     <include file="$(find rl_agents)/launch/$(arg agent).launch"/>
