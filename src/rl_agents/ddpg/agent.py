@@ -51,8 +51,8 @@ class Agent(AgentBase):
             rospy.get_param('ddpg/replay_memory_initial_size')
         replay_memory_max_size = \
             rospy.get_param('ddpg/replay_memory_max_size')
-        actor_critic_model_version = \
-            rospy.get_param('ddpg/actor_critic_model_version')
+        self.model_name = \
+            rospy.get_param('ddpg/model')
 
         if replay_memory_initial_size == -1:
             replay_memory_initial_size = self.batch_size
@@ -76,12 +76,11 @@ class Agent(AgentBase):
                 "{}) {} (shape = {})".format(idx, key, value.shape))
 
         # get the learning model used for critic
+        print(self.model_name)
         self.preprocessor = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
+                    'rl_agents.{}.{}'.format(self.name, self.model_name)),
                 'PreprocessHandler')
         self.preprocessor = self.preprocessor(self.input_shapes_env)
 
@@ -156,6 +155,7 @@ class Agent(AgentBase):
         score_history = []
         np.random.seed(0)
         for eps in range(self.n_episodes):
+            self.global_step = 0
             state = self.preprocessor.process(self.env.reset(), self.sess)
             done = False
             score = 0
@@ -168,12 +168,12 @@ class Agent(AgentBase):
                 if self.exp_memory.size >= self.batch_size:
                     self.learn()
                 score += reward
-                rospy.loginfo(
-                    '''Epsiode step#{}: Score = {}'''.format(step, score))
+                # rospy.loginfo(
+                #     '''Epsiode step#{} - Score = {}'''.format(step, score))
                 if done:
                     break
                 state = new_state
-                # env.render() To be linked with ROS
+                # self.env.render()
             score_history.append(score)
             rospy.loginfo(
                 '''Episode {} - Score {} - 100 game average {}'''.format(
@@ -185,6 +185,49 @@ class Agent(AgentBase):
         plot_learning(score_history, filename, window=100)
         self.save_models()
 
+    def learn(self):
+        """
+        Performs the DDPG update to train the actor and critic networks
+        """
+        self.global_step += 1
+        for _, gpu in enumerate(["/gpu:0"]):
+            with tf.device(gpu):
+                samples = \
+                    self.exp_memory.sample(self.batch_size)
+
+                # target q-value(new_state) with actor's bounded action forward
+                # pass
+                target_actions = \
+                    self.target_actor.predict(samples['s_next'])
+
+                q_values = \
+                    self.target_critic.predict(
+                        {**samples['s_next'], "actions": target_actions}
+                    )
+
+                target = \
+                    np.array([
+                        samples['r'][j] + self.discount_factor * q_values[j] *
+                        samples['done'][j]
+                        for j in range(self.batch_size)
+                    ])
+
+                self.critic.train(
+                    {**samples['s'], "actions": samples['a']},
+                    target,
+                    step=self.global_step)
+
+                # a = mu(s_i)
+                next_actions = self.actor.predict(samples['s'])
+                # gradients of Q w.r.t actions
+                grads = \
+                    self.critic.get_action_gradients(
+                        {**samples['s'], "actions": next_actions})
+
+                # why is gradient zero?
+                self.actor.train(samples['s'], grads[0])
+                self.update_target_network_parameters(first_update=False)
+
     def make_critic(
             self,
             scope,
@@ -193,14 +236,10 @@ class Agent(AgentBase):
         Initializes and returns a critic
         """
         # get the learning model used for critic
-        actor_critic_model_version = \
-            rospy.get_param('ddpg/actor_critic_model_version')
         critic_model_fn = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
+                    'rl_agents.{}.{}'.format(self.name, self.model_name)),
                 'CriticModel')
 
         critic_model = \
@@ -228,14 +267,10 @@ class Agent(AgentBase):
         Initializes and returns an actor
         """
         # get the learning model used for actor
-        actor_critic_model_version = \
-            rospy.get_param('ddpg/actor_critic_model_version')
         actor_model_fn = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
+                    'rl_agents.{}.{}'.format(self.name, self.model_name)),
                 'ActorModel')
 
         # initialize actor model
@@ -286,46 +321,6 @@ class Agent(AgentBase):
         """ Returns an action based on the current state input. """
         action = self.actor.predict(state) + self.noise()
         return action[0]
-
-    def learn(self):
-        """
-        Performs the DDPG update to train the actor and critic networks
-        """
-        for _, gpu in enumerate(["/gpu:0"]):
-            with tf.device(gpu):
-                samples = \
-                    self.exp_memory.sample(self.batch_size)
-
-                # target q-value(new_state) with actor's bounded action forward
-                # pass
-                target_actions = \
-                    self.target_actor.predict(samples['s_next'])
-
-                q_values = \
-                    self.target_critic.predict(
-                        {**samples['s_next'], "actions": target_actions}
-                    )
-
-                target = \
-                    np.array([
-                        samples['r'][j] + self.discount_factor * q_values[j] *
-                        samples['done'][j]
-                        for j in range(self.batch_size)
-                    ])
-
-                self.critic.train(
-                    {**samples['s'], "actions": samples['a']}, target)
-
-                # a = mu(s_i)
-                next_actions = self.actor.predict(samples['s'])
-                # gradients of Q w.r.t actions
-                grads = \
-                    self.critic.get_action_gradients(
-                        {**samples['s'], "actions": next_actions})
-
-                # why is gradient zero?
-                self.actor.train(samples['s'], grads[0])
-                self.update_target_network_parameters(first_update=False)
 
     def save_models(self):
         """ Saves a model from a checkpoint file. """

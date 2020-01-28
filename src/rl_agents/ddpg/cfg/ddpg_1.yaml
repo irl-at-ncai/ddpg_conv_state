@@ -1,6 +1,6 @@
 ddpg:
-  lr_critic: 0.00005
-  lr_actor: 0.0005
+  lr_critic: 0.001
+  lr_actor: 0.001
   replay_memory_initial_size: -1
   replay_memory_max_size: 10000
   discount_factor: 0.99
