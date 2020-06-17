@@ -2,8 +2,8 @@
 """Defines the actor for DDPG algorithm"""
 
 import os
-import tensorflow as tf
-from tensorflow.train import AdamOptimizer
+import tensorflow.compat.v1 as tf
+from tensorflow.compat.v1.train import AdamOptimizer
 from rl_agents.ddpg.actor_critic_1 import ActorModel
 
 

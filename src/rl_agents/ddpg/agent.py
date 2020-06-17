@@ -7,9 +7,9 @@ policy gradients.
 import importlib
 import copy
 import numpy as np
-import tensorflow as tf
-from tensorflow.train import AdamOptimizer
-from tensorflow.losses import mean_squared_error
+import tensorflow.compat.v1 as tf
+from tensorflow.compat.v1.train import AdamOptimizer
+from tensorflow.compat.v1.losses import mean_squared_error
 from rl_agents.common.agent_base import AgentBase
 from rl_agents.common.experience_memory import ExperienceMemory
 from rl_agents.common.experience_memory import Transition

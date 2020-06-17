@@ -7,14 +7,14 @@ import os
 from operator import itemgetter
 import yaml
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import Conv2D
-from tensorflow.keras.layers import Flatten
-from tensorflow.keras.layers import BatchNormalization
-from tensorflow.keras.activations import relu, tanh
-from tensorflow.keras.initializers import random_uniform
-from tensorflow.keras.regularizers import l2
+import tensorflow.compat.v1 as tf
+from tensorflow.compat.v1.keras.layers import Dense
+from tensorflow.compat.v1.keras.layers import Conv2D
+from tensorflow.compat.v1.keras.layers import Flatten
+from tensorflow.compat.v1.keras.layers import BatchNormalization
+from tensorflow.compat.v1.keras.activations import relu, tanh
+from tensorflow.compat.v1.keras.initializers import random_uniform
+from tensorflow.compat.v1.keras.regularizers import l2
 from rl_agents.common.utils import inherit_docs
 from rl_agents.common.state_preprocessors import ImagePreprocessor, \
     StateConcatenator
