@@ -6,4 +6,3 @@ agent_base:
   batch_size: 64
   n_episodes: 1000
   max_episode_steps: 500
-  actor_critic_model_version: 'v1'
