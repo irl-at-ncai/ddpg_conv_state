@@ -1,6 +1,5 @@
 <launch>
-    <arg name="agent" default="ddpg"/>
-		<rosparam command="load" file="$(find rl_agents)/cfg/agent.yaml" />    
+    <rosparam command="load" file="$(find rl_agents)/cfg/agent.yaml" />
 
     <!-- launch rl_agent internal launch file -->
     <include file="$(find rl_agents)/launch/$(arg agent).launch"/>

@@ -1,5 +1,12 @@
 <launch>
+    <arg name="agent" value="ddpg"/>
+
     <!-- load configuration -->
     <rosparam command="load"
         file="$(find rl_agents)/src/rl_agents/ddpg/cfg/ddpg_1.yaml" />
+
+    <node
+            pkg="rl_agents" name="agent_node" type="agent_node.py" output="screen">
+        <param name="agent" value="$(arg agent)"/>
+    </node>
 </launch>
