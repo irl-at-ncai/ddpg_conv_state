@@ -34,8 +34,8 @@ class Agent(AgentBase):
         The underlying gym environment the agent acts on
     """
     # pylint: disable=too-many-instance-attributes
-    def __init__(self, agent_name, env):
-        super(Agent, self).__init__(agent_name=agent_name, env=env)
+    def __init__(self, agent_name):
+        super(Agent, self).__init__(agent_name=agent_name)
 
         # get all configuration parameters
         self.discount_factor = rospy.get_param('ddpg/discount_factor')
@@ -59,20 +59,25 @@ class Agent(AgentBase):
 
         # get environment space info
         # input to critic and output from actor. Shape is the same for both
-        if (isinstance(self.env.action_space, Discrete)):
-            actions_input_shape = (self.env.action_space.n,)
-        elif (isinstance(self.env.action_space, Box)):
-            actions_input_shape = (self.env.action_space.shape[0],)
+        spaces = self.env_wrapper.info_srv()
+        observation_space, action_space = \
+            self.env_wrapper.space_from_ros(
+                spaces.observation_space, spaces.action_space)
+
+        if (isinstance(action_space, Discrete)):
+            actions_input_shape = (action_space.n,)
+        elif (isinstance(action_space, Box)):
+            actions_input_shape = (action_space.shape[0],)
         self.actions_output_shape = actions_input_shape
+
         self.input_shapes_env = {}
-        for key, obs in self.env.observation_space.spaces.items():
+        for key, obs in observation_space.items():
             self.input_shapes_env[key] = obs.shape
 
         # state input info
         rospy.loginfo(
             "Initializing the network with following observations:")
-        for idx, (key, value) in \
-                enumerate(env.observation_space.spaces.items()):
+        for idx, (key, value) in enumerate(observation_space.items()):
             rospy.loginfo(
                 "{}) {} (shape = {})".format(idx, key, value.shape))
 
@@ -219,7 +224,7 @@ class Agent(AgentBase):
             input_shapes=self.actor_input_shapes,
             # output actions from actor are input to critic
             actions_output_shape=self.actions_output_shape,
-            action_bound=self.env.action_space.high,
+            action_bound=action_space.high,
             learning_rate=self.lr_critic,
             batch_size=self.batch_size,
             model=self.actor_model,
