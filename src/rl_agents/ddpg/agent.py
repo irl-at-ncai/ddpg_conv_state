@@ -18,6 +18,7 @@ from rl_agents.ddpg.actor import Actor
 from rl_agents.ddpg.critic import Critic
 from rl_agents.common.utils import plot_learning
 import rospy
+from gym.spaces import Discrete, Box
 
 
 class Agent(AgentBase):
@@ -50,15 +51,18 @@ class Agent(AgentBase):
             rospy.get_param('ddpg/replay_memory_initial_size')
         replay_memory_max_size = \
             rospy.get_param('ddpg/replay_memory_max_size')
-        actor_critic_model_version = \
-            rospy.get_param('ddpg/actor_critic_model_version')
+        actor_critic_model = \
+            rospy.get_param('ddpg/actor_critic_model')
 
         if replay_memory_initial_size == -1:
             replay_memory_initial_size = self.batch_size
 
         # get environment space info
         # input to critic and output from actor. Shape is the same for both
-        actions_input_shape = (self.env.action_space.shape[0],)
+        if (isinstance(self.env.action_space, Discrete)):
+            actions_input_shape = (self.env.action_space.n,)
+        elif (isinstance(self.env.action_space, Box)):
+            actions_input_shape = (self.env.action_space.shape[0],)
         self.actions_output_shape = actions_input_shape
         self.input_shapes_env = {}
         for key, obs in self.env.observation_space.spaces.items():
@@ -76,9 +80,7 @@ class Agent(AgentBase):
         self.preprocessor = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
+                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
                 'PreprocessHandler')
         self.preprocessor = self.preprocessor(self.input_shapes_env)
 
@@ -86,18 +88,14 @@ class Agent(AgentBase):
         self.critic_model = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
+                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
                 'CriticModel')
 
         # get the learning model used for actor
         self.actor_model = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.actor_critic_{}'.format(
-                        self.name,
-                        actor_critic_model_version.replace('v', ''))),
+                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
                 'ActorModel')
 
         self.actor_input_shapes = self.preprocessor.input_shapes
