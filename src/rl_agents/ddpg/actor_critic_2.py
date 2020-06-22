@@ -42,7 +42,7 @@ class PreprocessHandler():
         # update the shapes to what we want
         self.input_shapes_env = input_shapes_env
         self.input_shapes = {}
-        print(input_shapes_env)
+
         for target_key, keys in self.network_inputs.items():
             shapes = [input_shapes_env[key] for key in keys]
             self.input_shapes[target_key] = tuple(map(sum, zip(*shapes)))
@@ -61,7 +61,7 @@ class PreprocessHandler():
         """
         self.preprocessors = {}
         for key, value in self.network_inputs.items():
-            print(key)
+
             # define a preprocess for robot state
             if key == 'robot_state':
                 self.preprocessors[key] = \
