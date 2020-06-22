@@ -1,0 +1,14 @@
+dense_layers:
+  sizes:
+    d1: 400
+    d2: 300
+    d3: 300
+
+output_params:
+  noise: 0.0003
+  l2: 0.01
+
+network_inputs:
+  robot_state: ["robot_state"]
+
+input_image_shape: [60, 80, 4]

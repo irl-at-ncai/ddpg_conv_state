@@ -1,0 +1,10 @@
+<launch>
+    <!-- load configuration -->
+    <rosparam command="load"
+        file="$(find rl_agents)/src/rl_agents/sac/cfg/sac_1.yaml" />
+    <node
+        name="test_sac"
+        type="test_sac.py"
+        pkg="rl_agents"
+        output="screen"/>
+</launch>
