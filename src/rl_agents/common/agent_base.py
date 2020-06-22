@@ -3,26 +3,26 @@
 
 import importlib
 import os
+import rospy
 import tensorflow as tf
+from agent_ros_wrapper import AgentRosWrapper
 tf.compat.v1.disable_v2_behavior()
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 
-class AgentBase():
+class AgentBase(object):
     """
     The base class for agents
     """
 
-    __init_access = object()
-
-    def __init__(self, init_access, agent_name):
-        assert(init_access == AgentBase.__init_access), \
-            "AgentBase objects must be obtained using AgentBase.get_agent"
+    def __init__(self, agent_name):
         self.name = agent_name
         gpu_options = tf.compat.v1.GPUOptions(visible_device_list="0")
         self.sess = tf.compat.v1.Session(
             config=tf.compat.v1.ConfigProto(
                 gpu_options=gpu_options, log_device_placement=True))
+        self.env_wrapper = \
+            AgentRosWrapper(rospy.get_param("ros_gym/environment_name"))
 
     @classmethod
     def get_agent(cls, agent_name):
@@ -40,4 +40,4 @@ class AgentBase():
         """
         module = \
             importlib.import_module('rl_agents.{}.agent'.format(agent_name))
-        return module.Agent(cls.__init_access, agent_name)
+        return module.Agent(agent_name)
