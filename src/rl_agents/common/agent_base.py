@@ -12,24 +12,26 @@ class AgentBase():
     """
     The base class for agents
     """
-    def __init__(self, agent_name, env):
+
+    __init_access = object()
+
+    def __init__(self, init_access, agent_name):
+        assert(init_access == AgentBase.__init_access), \
+            "AgentBase objects must be obtained using AgentBase.get_agent"
         self.name = agent_name
-        self.env = env
         gpu_options = tf.compat.v1.GPUOptions(visible_device_list="0")
         self.sess = tf.compat.v1.Session(
             config=tf.compat.v1.ConfigProto(
                 gpu_options=gpu_options, log_device_placement=True))
 
-    @staticmethod
-    def get_agent(agent_name, env):
+    @classmethod
+    def get_agent(cls, agent_name):
         """Returns an agent of given name
 
         Parameters
         ----------
         agent_name : str
             Name of the agent
-        env: gym.Env
-            The underlying gym environment the agent acts on
 
         Returns
         ------
@@ -38,4 +40,4 @@ class AgentBase():
         """
         module = \
             importlib.import_module('rl_agents.{}.agent'.format(agent_name))
-        return module.Agent(agent_name, env)
+        return module.Agent(cls.__init_access, agent_name)
