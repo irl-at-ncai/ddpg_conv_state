@@ -1,0 +1,16 @@
+ddqn:
+  lr: 0.0001
+  replay_memory_initial_size: -1
+  replay_memory_max_size: 10000
+  discount_factor: 0.99
+  batch_size: 128
+  n_episodes: 100000
+  max_episode_steps: 1000
+  target_soft_update_weight: 0.001
+  network_input_image_shape: [60, 80, 1]
+  ddqn_model_version: 'v1'
+  plot_file_name: 'AirSim.png'
+  epsilon_starting: 1.0
+  epsilon_ending: 0.01
+  epsilon_decay: 0.995
+  n_actions: 7
