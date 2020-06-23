@@ -45,7 +45,7 @@ class Actor(object):
             optimizer=AdamOptimizer,
             scope='actor',
             summaries_dir='tmp/ddpg/actor',
-            gpu="/gpu:0"):
+            device=self.device):
         with tf.compat.v1.name_scope(scope):
             self.sess = sess
             self.input_shapes = input_shapes
@@ -54,7 +54,7 @@ class Actor(object):
             self.batch_size = batch_size
             self.optimizer = optimizer
             self.scope = scope
-            self.gpu = gpu
+            self.device = device
             self.model = \
                 model(
                     action_bound=action_bound,
@@ -75,9 +75,10 @@ class Actor(object):
                 self.summary_writer = \
                     tf.compat.v1.summary.FileWriter(summary_dir)
 
-            with tf.device(self.gpu):
-                # Build the graph
-                self.build()
+            for _, device in enumerate(self.device):
+                with tf.device(device):
+                    # Build the graph
+                    self.build()
 
             self.saver = tf.compat.v1.train.Saver()
 
@@ -126,11 +127,12 @@ class Actor(object):
         feed_dict = {}
         for key, value in self.input_phs.items():
             feed_dict[value] = inputs[key]
-        with tf.device(self.gpu):
-            return \
-                self.sess.run(
-                    self.actions,
-                    feed_dict=feed_dict)
+        for _, device in enumerate(self.device):
+            with tf.device(device):
+                return \
+                    self.sess.run(
+                        self.actions,
+                        feed_dict=feed_dict)
 
     def train(self, inputs, actions_gradients):
         """
@@ -140,11 +142,12 @@ class Actor(object):
         for key, value in self.input_phs.items():
             feed_dict[value] = inputs[key]
         feed_dict[self.actions_gradients] = actions_gradients
-        with tf.device(self.gpu):
-            _ = \
-                self.sess.run(
-                    self.optimize,
-                    feed_dict=feed_dict)
+        for _, device in enumerate(self.device):
+            with tf.device(device):
+                _ = \
+                    self.sess.run(
+                        self.optimize,
+                        feed_dict=feed_dict)
 
     def save_checkpoint(self):
         """Saves the model checkpoint"""

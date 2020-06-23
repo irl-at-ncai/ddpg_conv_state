@@ -42,7 +42,7 @@ class Critic(object):
             optimizer=AdamOptimizer,
             scope='critic',
             summaries_dir='tmp/ddpg/critic',
-            gpu="/gpu:0"):
+            device=self.device):
         with tf.compat.v1.name_scope(scope):
             self.sess = sess
             self.input_shapes = input_shapes
@@ -50,7 +50,7 @@ class Critic(object):
             self.loss_fn = loss_fn
             self.optimizer = optimizer
             self.scope = scope
-            self.gpu = gpu
+            self.device = device
             self.model = \
                 model(input_shapes=self.input_shapes, scope=self.scope)
 
@@ -58,9 +58,10 @@ class Critic(object):
                 os.path.join(summaries_dir, scope + '_ddpg.checkpoint')
 
             self.summary_writer = None
-            with tf.device(self.gpu):
-                # Build the graph
-                self.build()
+            for _, device in enumerate(self.device):
+                with tf.device(device):
+                    # Build the graph
+                    self.build()
 
             # Writes Tensorboard summaries to disk
             if summaries_dir:
@@ -112,51 +113,54 @@ class Critic(object):
         """
         Performs the forward pass for the network to predict action Q-value
         """
-        with tf.device(self.gpu):
-            feed_dict = {}
-            for key, value in self.input_phs.items():
-                feed_dict[value] = inputs[key]
-            return \
-                self.sess.run(
-                    self.q_value,
-                    feed_dict=feed_dict)
+        for _, device in enumerate(self.device):
+            with tf.device(device):
+                feed_dict = {}
+                for key, value in self.input_phs.items():
+                    feed_dict[value] = inputs[key]
+                return \
+                    self.sess.run(
+                        self.q_value,
+                        feed_dict=feed_dict)
 
     def train(self, inputs, q_target):
         """
         Performs the back-propagation of gradient for loss minimization
         """
-        with tf.device(self.gpu):
-            feed_dict = {}
-            for key, value in self.input_phs.items():
-                feed_dict[value] = inputs[key]
-            feed_dict[self.q_target] = q_target
-            if False:  # @todo: summaries have errors
-                _, summaries, global_step = \
-                    self.sess.run(
-                        [
+        for _, device in enumerate(self.device):
+            with tf.device(device):
+                feed_dict = {}
+                for key, value in self.input_phs.items():
+                    feed_dict[value] = inputs[key]
+                feed_dict[self.q_target] = q_target
+                if False:  # @todo: summaries have errors
+                    _, summaries, global_step = \
+                        self.sess.run(
+                            [
+                                self.optimize,
+                                self.summaries,
+                                tf.contrib.framework.get_global_step()],
+                            feed_dict=feed_dict)
+                    self.summary_writer.add_summary(summaries, global_step)
+                else:
+                    _ = \
+                        self.sess.run(
                             self.optimize,
-                            self.summaries,
-                            tf.contrib.framework.get_global_step()],
-                        feed_dict=feed_dict)
-                self.summary_writer.add_summary(summaries, global_step)
-            else:
-                _ = \
-                    self.sess.run(
-                        self.optimize,
-                        feed_dict=feed_dict)
+                            feed_dict=feed_dict)
 
     def get_action_gradients(self, inputs):
         """
         Returns the action gradients with respect to Q-values
         """
-        with tf.device(self.gpu):
-            feed_dict = {}
-            for key, value in self.input_phs.items():
-                feed_dict[value] = inputs[key]
-            return \
-                self.sess.run(
-                    self.action_gradients,
-                    feed_dict=feed_dict)
+        for _, device in enumerate(self.device):
+            with tf.device(device):
+                feed_dict = {}
+                for key, value in self.input_phs.items():
+                    feed_dict[value] = inputs[key]
+                return \
+                    self.sess.run(
+                        self.action_gradients,
+                        feed_dict=feed_dict)
 
     def save_checkpoint(self):
         """Saves the model checkpoint"""
