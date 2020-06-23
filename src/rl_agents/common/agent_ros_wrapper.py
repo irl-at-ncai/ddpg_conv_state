@@ -36,7 +36,7 @@ class AgentRosWrapper():
         except (rospy.ServiceException, rospy.ROSException):
             rospy.logerr("Service {} unavailable.".format(name))
 
-    def info_srv(self):
+    def info_env(self):
         """Wrapper for environment info service call."""
         return self.env_info_srv()
 
