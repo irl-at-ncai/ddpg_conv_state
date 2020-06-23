@@ -22,6 +22,14 @@ from gym.spaces import Discrete, Box
 
 
 class Agent(AgentBase):
+    def get_state_preprocessor(self):
+        # get the preprocessor class
+        return
+            getattr(
+                importlib.import_module(
+                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
+                'PreprocessHandler')
+
     """
     A reinforcement learning agent that uses deep deterministic
     policy gradients (DDPG).
@@ -37,86 +45,30 @@ class Agent(AgentBase):
     def __init__(self, agent_name):
         super(Agent, self).__init__(agent_name=agent_name)
 
-        # get all configuration parameters
-        self.discount_factor = rospy.get_param('ddpg/discount_factor')
-        # The tau parameter for weighted target network update
+        # get ddpg specific configuration parameters
+        # tau parameter for weighted target network update
         self.target_soft_update_weight = \
             rospy.get_param('ddpg/target_soft_update_weight')
-        self.batch_size = rospy.get_param('ddpg/batch_size')
-        self.n_episodes = rospy.get_param('ddpg/n_episodes')
-        self.max_episode_steps = rospy.get_param('ddpg/max_episode_steps')
         self.lr_critic = rospy.get_param('ddpg/lr_critic')
         self.lr_actor = rospy.get_param('ddpg/lr_actor')
-        replay_memory_initial_size = \
-            rospy.get_param('ddpg/replay_memory_initial_size')
-        replay_memory_max_size = \
-            rospy.get_param('ddpg/replay_memory_max_size')
-        actor_critic_model = \
+        actor_critic_model_name = \
             rospy.get_param('ddpg/actor_critic_model')
-
-        if replay_memory_initial_size == -1:
-            replay_memory_initial_size = self.batch_size
-
-        # get environment space info
-        # input to critic and output from actor. Shape is the same for both
-        spaces = self.env_wrapper.info_srv()
-        observation_space, action_space = \
-            self.env_wrapper.space_from_ros(
-                spaces.observation_space, spaces.action_space)
-
-        if (isinstance(action_space, Discrete)):
-            actions_input_shape = (action_space.n,)
-        elif (isinstance(action_space, Box)):
-            actions_input_shape = (action_space.shape[0],)
-        self.actions_output_shape = actions_input_shape
-
-        self.input_shapes_env = {}
-        for key, obs in observation_space.items():
-            self.input_shapes_env[key] = obs.shape
-
-        # state input info
-        rospy.loginfo(
-            "Initializing the network with following observations:")
-        for idx, (key, value) in enumerate(observation_space.items()):
-            rospy.loginfo(
-                "{}) {} (shape = {})".format(idx, key, value.shape))
-
-        # get the learning model used for critic
-        self.preprocessor = \
-            getattr(
-                importlib.import_module(
-                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
-                'PreprocessHandler')
-        self.preprocessor = self.preprocessor(self.input_shapes_env)
 
         # get the learning model used for critic
         self.critic_model = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
+                    'rl_agents.{}.{}'.format(
+                        self.name, actor_critic_model_name)),
                 'CriticModel')
 
         # get the learning model used for actor
         self.actor_model = \
             getattr(
                 importlib.import_module(
-                    'rl_agents.{}.{}'.format(self.name, actor_critic_model)),
+                    'rl_agents.{}.{}'.format(
+                        self.name, actor_critic_model_name)),
                 'ActorModel')
-
-        self.actor_input_shapes = self.preprocessor.input_shapes
-        self.input_shapes = copy.deepcopy(self.actor_input_shapes)
-
-        # add actions to critic inputs
-        self.input_shapes['actions'] = actions_input_shape
-
-        # define experience memory
-        self.noise = \
-            OUActionNoise(mean=np.zeros(self.input_shapes['actions']))
-        self.exp_memory = \
-            ExperienceMemory(
-                state_inputs=self.input_shapes,
-                init_size=replay_memory_initial_size,
-                max_size=replay_memory_max_size)
 
         # define critics
         self.critic = \
@@ -158,41 +110,7 @@ class Agent(AgentBase):
 
         self.sess.run(tf.compat.v1.global_variables_initializer())
         self.update_target_network_parameters(first_update=True)
-        rospy.loginfo('Done creating agent!')
-
-    def start_training(self):
-        """ Trains the network """
-        score_history = []
-        np.random.seed(0)
-        for eps in range(self.n_episodes):
-            state = self.preprocessor.process(self.env.reset(), self.sess)
-            done = False
-            score = 0
-            for step in range(self.max_episode_steps):
-                action = self.choose_action(state)
-                new_state, reward, done, _ = self.env.step(action)
-                new_state = self.preprocessor.process(new_state, self.sess)
-                self.exp_memory.add(
-                    Transition(state, action, reward, new_state, done, eps))
-                if self.exp_memory.size >= self.batch_size:
-                    self.learn()
-                score += reward
-                rospy.loginfo(
-                    '''Epsiode step#{}: Score = {}'''.format(step, score))
-                if done:
-                    break
-                state = new_state
-                # env.render() To be linked with ROS
-            score_history.append(score)
-            rospy.loginfo(
-                '''Episode {} - Score {} - 100 game average {}'''.format(
-                    eps, score, np.mean(score_history[-100:])))
-            if eps + 1 % 200 == 0:
-                self.save_models()
-        self.env.close()
-        filename = rospy.get_param('ddpg/plot_file_name')
-        plot_learning(score_history, filename, window=100)
-        self.save_models()
+        rospy.loginfo('Agent initialized successfully!')
 
     def make_critic(
             self,
@@ -210,7 +128,7 @@ class Agent(AgentBase):
             optimizer=AdamOptimizer,
             scope=scope,
             summaries_dir=summaries_dir,
-            gpu="/gpu:0")
+            device=self.device)
 
     def make_actor(
             self,
@@ -221,9 +139,9 @@ class Agent(AgentBase):
         """
         return Actor(
             sess=self.sess,
-            input_shapes=self.actor_input_shapes,
+            input_shapes=self.state_input_shapes,
             # output actions from actor are input to critic
-            actions_output_shape=self.actions_output_shape,
+            actions_output_shape=self.actions_shape,
             action_bound=action_space.high,
             learning_rate=self.lr_critic,
             batch_size=self.batch_size,
@@ -231,14 +149,14 @@ class Agent(AgentBase):
             optimizer=AdamOptimizer,
             scope=scope,
             summaries_dir=summaries_dir,
-            gpu="/gpu:0")
+            device=self.device)
 
     def update_target_network_parameters(self, first_update=False):
         """
         Updates the target networks from main networks with a soft-update
         """
-        for _, gpu in enumerate(["/gpu:0"]):
-            with tf.device(gpu):
+        for _, device in enumerate(self.device):
+            with tf.device(device):
                 if first_update:
                     old_target_soft_update_weight = \
                         self.target_soft_update_weight
@@ -256,12 +174,12 @@ class Agent(AgentBase):
         action = self.actor.predict(state) + self.noise()
         return action[0]
 
-    def learn(self):
+    def update_network(self):
         """
         Performs the DDPG update to train the actor and critic networks
         """
-        for _, gpu in enumerate(["/gpu:0"]):
-            with tf.device(gpu):
+        for _, device in enumerate(self.device):
+            with tf.device(device):
                 samples = \
                     self.exp_memory.sample(self.batch_size)
 
