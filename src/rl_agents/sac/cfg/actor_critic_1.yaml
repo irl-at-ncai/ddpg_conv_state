@@ -1,0 +1,26 @@
+conv_layers:
+  sizes:
+    c1: 32
+    c2: 32
+    c3: 32
+  kernels:
+    c1: 3
+    c2: 3
+    c3: 3
+
+dense_layers:
+  sizes:
+    d4: 400
+    d5: 300
+
+output_params:
+  noise: 0.0003
+  l2: 0.01
+
+network_inputs:
+  robot_state: ["position", "velocity"]
+  image: ["front_cam"]
+  #image_depth: ["front_cam_depth"]
+
+input_image_shape: [60, 80, 4]
+input_depth_image_shape: [60, 80, 1]
